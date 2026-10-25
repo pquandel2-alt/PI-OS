@@ -70,6 +70,11 @@ check "chromium installed (arm64)" bash -c "file -L '$MNT/usr/bin/chromium' | gr
 check "cage installed (arm64)" bash -c "file -L '$MNT/usr/bin/cage' | grep -q aarch64"
 if [[ -x /usr/bin/qemu-aarch64-static || -x /usr/libexec/qemu-binfmt/aarch64-binfmt-P ]]; then
   mount -t proc proc "$MNT/proc"; mount --rbind /sys "$MNT/sys"; mount --rbind /dev "$MNT/dev"
+  # Make sure the kernel runs arm64 binaries through qemu, and that the interpreter exists inside the chroot.
+  update-binfmts --enable qemu-aarch64 >/dev/null 2>&1 || true
+  [[ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]] || { mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null; update-binfmts --enable qemu-aarch64 >/dev/null 2>&1; }
+  [[ -x /usr/bin/qemu-aarch64-static ]] && cp /usr/bin/qemu-aarch64-static "$MNT/usr/bin/qemu-aarch64-static"
+  echo "     binfmt: $(head -n1 /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null || echo 'qemu-aarch64 NOT registered')"
   check "python imports all arm64 dependencies" chroot "$MNT" /usr/bin/python3 -c "import fastapi, starlette, uvicorn, psutil, argon2, multipart, pydantic, pydantic_core, sqlite3; print('ok')"
   # Smoke-run the real application inside the arm64 root file system.
   rm -rf "$MNT/tmp/piosdata"; mkdir -p "$MNT/tmp/piosdata"
@@ -87,7 +92,7 @@ if [[ -x /usr/bin/qemu-aarch64-static || -x /usr/libexec/qemu-binfmt/aarch64-bin
     tail -n 30 "$MNT/tmp/uvicorn.log"
   fi
   kill "$SRV_PID" 2>/dev/null; SRV_PID=""
-  rm -rf "$MNT/tmp/piosdata" "$MNT/tmp/uvicorn.log"
+  rm -rf "$MNT/tmp/piosdata" "$MNT/tmp/uvicorn.log" "$MNT/usr/bin/qemu-aarch64-static"
 else
   fail "qemu-user-static (aarch64) not available: emulated checks skipped"
 fi

@@ -3,6 +3,9 @@
 Install the PiOS image once; afterwards update from the NOVA interface (**Update Center**, or Settings → System →
 Updates). No SSH, no terminal, no re-flashing. Works the same in the browser and on the HDMI desktop.
 
+> **Verified so far:** image build run 40243716027 (2026-10-26): 62 automated image checks passed, including the Update Manager
+> running inside the arm64 root file system under qemu. The emulated systemd boot test still does not work on the CI runner.
+>
 > **Honest status:** the update system is implemented and tested (≈ 90 automated tests, including power-loss, failed
 > health checks, rollback and tampering), but it has **not run on a real Raspberry Pi 5 yet**. Images built before
 > 0.2.0 do not contain the Update Manager and cannot update themselves: flash a 0.2.0+ image once (see *Migration*).

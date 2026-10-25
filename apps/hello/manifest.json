@@ -1,0 +1,12 @@
+{
+  "id": "hello",
+  "name": "Hello NOVA",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "index.html",
+  "icon": "spark",
+  "description": "Beispiel-App für das PiOS SDK: Zähler mit pios.storage, Toast und Benachrichtigung.",
+  "author": "PiOS",
+  "permissions": ["storage", "notifications", "system.read"],
+  "window": { "width": 420, "height": 360 }
+}

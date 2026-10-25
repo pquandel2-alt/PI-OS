@@ -9,21 +9,25 @@ PASSWORD = "correct horse battery"
 SHOTS = Path(__file__).parent / "screens"
 
 
-def login(page, url, password=PASSWORD):
+def login(page, url, user="admin", password=PASSWORD, fresh=True):
     page.goto(url)
     page.wait_for_selector(".auth-card, .dock")
-    if page.locator(".dock").count():
-        return
-    if page.locator("input[autocomplete=new-password]").count():  # first start: setup wizard
-        page.fill("input[autocomplete=username]", "admin")
-        fields = page.locator("input[type=password]")
-        fields.nth(0).fill(password)
-        fields.nth(1).fill(password)
-    else:
-        page.fill("input[autocomplete=username]", "admin")
-        page.fill("input[type=password]", password)
-    page.click("button[type=submit]")
-    page.wait_for_selector(".dock")
+    if not page.locator(".dock").count():
+        if page.locator("input[autocomplete=new-password]").count():  # first start: setup wizard
+            page.fill("input[autocomplete=username]", user)
+            fields = page.locator("input[type=password]")
+            fields.nth(0).fill(password)
+            fields.nth(1).fill(password)
+        else:
+            page.fill("input[autocomplete=username]", user)
+            page.fill("input[type=password]", password)
+        page.click("button[type=submit]")
+        page.wait_for_selector(".dock")
+    if fresh:  # every test starts with an empty desktop (the layout is persisted server-side)
+        page.evaluate("""() => fetch('/api/desktop', {method: 'PUT', headers: {'X-PiOS': '1', 'Content-Type': 'application/json'}, body: '{"windows":{},"open":[]}'})""")
+        page.reload()
+        page.wait_for_selector(".dock")
+        page.wait_for_timeout(300)
 
 
 def open_app(page, name):
@@ -125,7 +129,7 @@ def test_notes_create_autosave_search_delete(page, server):
     page.fill(".note-body", "Der Orb leuchtet violett")
     page.wait_for_function("() => document.querySelector('.note-status').textContent.startsWith('Gespeichert')", timeout=5000)
     page.reload()
-    open_app(page, "NOVA Notes") if not page.locator(".win[aria-label='NOVA Notes']").count() else None
+    page.wait_for_selector(".win[aria-label='NOVA Notes']:not(.min)")  # restored from the saved desktop
     page.wait_for_selector(".note-row")
     page.fill(".notes-side input[type=search]", "violett")
     page.wait_for_function("() => document.querySelectorAll('.note-row').length === 1")
@@ -186,7 +190,7 @@ def test_monitor_updates_live(page, server):
     page.wait_for_selector(".gauge-val:not(:has-text('–'))")
     seen = []
     page.on("request", lambda r: "/api/system" in r.url and seen.append(r.url))
-    time.sleep(6)
+    page.wait_for_timeout(6500)  # (time.sleep would block Playwright's event loop)
     assert len(seen) >= 2, "metrics must refresh without reloading"
     assert re.search(r"\d+ (min|h|d)", page.inner_text(".mon-big"))
     shot(page, "monitor")
@@ -194,7 +198,15 @@ def test_monitor_updates_live(page, server):
 
 def test_settings_theme_motion_and_password(page, server):
     login(page, server)
+    page.evaluate("""() => fetch('/api/users', {method: 'POST', headers: {'X-PiOS': '1', 'Content-Type': 'application/json'}, body: JSON.stringify({username: 'carol', password: 'carols first password', role: 'user'})})""")
+    page.click(".tb-btn[aria-label='Benutzermenü']")
+    page.click(".menu button:has-text('Abmelden')")
+    page.wait_for_selector(".auth-card")
+    page.fill("input[autocomplete=username]", "carol"); page.fill("input[type=password]", "carols first password")
+    page.click("button[type=submit]")
+    page.wait_for_selector(".dock")
     open_app(page, "NOVA Settings")
+    assert page.locator(".tabs button:has-text('Benutzer')").count() == 0, "normal users must not see user administration"
     page.click(".tabs button:has-text('Darstellung')")
     page.click(".seg button:has-text('Violett')")
     page.wait_for_function("() => document.body.dataset.accent === 'violet'")
@@ -205,27 +217,20 @@ def test_settings_theme_motion_and_password(page, server):
     page.wait_for_function("() => document.body.dataset.accent === 'cyan' && document.body.dataset.motion === 'on'")
     page.click(".tabs button:has-text('System')")
     assert "0.1.0" in page.inner_text(".about-head")
-    # password change, then login with the new one
     page.click(".tabs button:has-text('Profil')")
     pw = page.locator(".set-content form input[type=password]")
-    pw.nth(0).fill(PASSWORD); pw.nth(1).fill("an even longer password 42"); pw.nth(2).fill("an even longer password 42")
+    pw.nth(0).fill("carols first password"); pw.nth(1).fill("an even longer password 42"); pw.nth(2).fill("an even longer password 42")
     page.click(".set-content form button[type=submit]")
     page.wait_for_selector(".toast:has-text('Passwort geändert')")
     page.click(".tb-btn[aria-label='Benutzermenü']")
     page.click(".menu button:has-text('Abmelden')")
     page.wait_for_selector(".auth-card")
-    page.fill("input[type=password]", PASSWORD)
+    page.fill("input[autocomplete=username]", "carol"); page.fill("input[type=password]", "carols first password")
     page.click("button[type=submit]")
     page.wait_for_selector(".error-text:has-text('fehlgeschlagen')")
     page.fill("input[type=password]", "an even longer password 42")
     page.click("button[type=submit]")
     page.wait_for_selector(".dock")
-    # restore for the other tests
-    open_app(page, "NOVA Settings")
-    pw = page.locator(".set-content form input[type=password]")
-    pw.nth(0).fill("an even longer password 42"); pw.nth(1).fill(PASSWORD); pw.nth(2).fill(PASSWORD)
-    page.click(".set-content form button[type=submit]")
-    page.wait_for_selector(".toast:has-text('Passwort geändert')")
 
 
 def test_sandboxed_app_storage_and_isolation(page, server):
@@ -245,15 +250,16 @@ def test_sandboxed_app_storage_and_isolation(page, server):
     assert child.evaluate("() => { try { return typeof parent.document.body; } catch (e) { return 'cross-origin'; } }") == "cross-origin"
     # persisted on the server: reload and reopen
     page.reload(); page.wait_for_selector(".dock")
-    if not page.locator(".win[aria-label='Hello NOVA']").count():
-        open_app(page, "Hello NOVA")
+    page.wait_for_selector(".win[aria-label='Hello NOVA']:not(.min)")  # restored from the saved desktop
     frame = page.frame_locator(".win[aria-label='Hello NOVA'] iframe")
-    page.wait_for_function("() => true")
     frame.locator("#count").wait_for()
-    page.wait_for_timeout(500)
+    page.wait_for_function("() => true")
+    page.wait_for_timeout(800)
     assert frame.locator("#count").inner_text() == "2"
-    # an app cannot call a capability it did not declare in its manifest
-    denied = child.evaluate("""async () => { try { await pios.files.list(''); return 'allowed'; } catch (e) { return e.status; } }""") if False else None
+    # an app cannot call a capability it did not declare in its manifest (enforced by the server)
+    child = [f for f in page.frames if "/apps/hello/" in f.url][0]
+    denied = child.evaluate("""async () => { try { await pios.files.list(''); return 'allowed'; } catch (e) { return e.status; } }""")
+    assert denied == 403
     shot(page, "sandbox-app")
 
 

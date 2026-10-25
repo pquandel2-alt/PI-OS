@@ -14,12 +14,12 @@ export function h(tag, props = {}, ...children) {
     else if (v === true) el.setAttribute(k, '');
     else el.setAttribute(k, v);
   }
-  append(el, children);
+  append(el, ...children);
   return el;
 }
 const SVG_TAGS = new Set(['svg', 'path', 'circle', 'g', 'line', 'polyline', 'rect', 'ellipse', 'defs', 'radialGradient', 'linearGradient', 'stop']);
 
-export function append(el, children) {
+export function append(el, ...children) {
   for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
     el.append(c.nodeType ? c : document.createTextNode(String(c)));

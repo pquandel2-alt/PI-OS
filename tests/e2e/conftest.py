@@ -46,3 +46,17 @@ def page(browser, server):
     pg.on("console", lambda m: m.type == "error" and pg.errors.append(m.text))
     yield pg
     ctx.close()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    pg = item.funcargs.get("page") if hasattr(item, "funcargs") else None
+    if rep.when == "call" and rep.failed and pg is not None:
+        shots = Path(__file__).parent / "screens"
+        shots.mkdir(exist_ok=True)
+        try:
+            pg.screenshot(path=str(shots / f"FAIL-{item.name}.png"))
+        except Exception:
+            pass

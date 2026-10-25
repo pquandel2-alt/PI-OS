@@ -67,5 +67,8 @@ def test_shipped_public_key_is_valid_and_private_key_not_in_repo():
     from pios_updater import crypto
     pub = ROOT / "image/overlay/usr/share/pios/update-keys/pios-release-1.pub"
     assert len(crypto.load_trusted_keys(pub.parent)) == 1
-    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    r = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode != 0:
+        pytest.skip("not a git checkout")
+    tracked = r.stdout.split()
     assert not any(f.endswith("private.key") for f in tracked)

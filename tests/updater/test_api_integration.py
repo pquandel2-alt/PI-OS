@@ -114,7 +114,7 @@ def test_updater_down_gives_clean_503_and_app_still_works(stack, client):
 
 
 def test_sse_stream_pushes_status(stack, client):
-    with client.stream("GET", "/api/updates/stream") as r:
+    with client.stream("GET", "/api/updates/stream?once=true") as r:
         assert r.headers["content-type"].startswith("text/event-stream")
         got = None
         for line in r.iter_lines():

@@ -119,7 +119,7 @@ def snooze(b: SnoozeBody, u=Depends(admin_user)):
 
 
 @router.get("/stream")
-async def stream(request: Request, u=Depends(admin_user)):
+async def stream(request: Request, once: bool = False, u=Depends(admin_user)):
     """Server-Sent Events: pushes the Update Manager's status whenever it changes (1 s while a job runs)."""
     async def gen():
         last, idle = None, 0.0
@@ -133,11 +133,15 @@ async def stream(request: Request, u=Depends(admin_user)):
                     last = digest
                     yield f"event: status\ndata: {blob}\n\n"
                     idle = 0.0
+                    if once:                      # single snapshot (curl, tests, clients without streaming support)
+                        return
                 running = (st.get("job") or {}).get("state") in ("running", "rolling_back")
             except (Unavailable, HTTPException):
                 if last != "unavailable":
                     last = "unavailable"
                     yield 'event: unavailable\ndata: {}\n\n'
+                    if once:
+                        return
                 running = False
             idle += 1
             if idle >= 15:

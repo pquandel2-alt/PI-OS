@@ -1,0 +1,35 @@
+name: Build PiOS image (experimental)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show disk space
+        run: df -h
+      - name: Build Raspberry Pi OS based PiOS image
+        run: bash scripts/build-image.sh
+      - name: Verify image file exists
+        run: |
+          find image-build/pi-gen/deploy -maxdepth 1 -type f
+          find image-build/pi-gen/deploy -type f \( -name '*.img' -o -name '*.img.xz' \) | grep -q .
+      - name: Compress and checksum image
+        run: |
+          cd image-build/pi-gen/deploy
+          for image in *.img; do
+            [ -e "$image" ] || continue
+            xz -T0 -1 "$image"
+          done
+          sha256sum *.img.xz > SHA256SUMS
+      - name: Upload private downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PiOS-NOVA-image
+          path: |
+            image-build/pi-gen/deploy/*.img.xz
+            image-build/pi-gen/deploy/SHA256SUMS
+          retention-days: 7

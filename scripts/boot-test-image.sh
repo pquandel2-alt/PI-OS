@@ -4,6 +4,9 @@
 # firmware, GPU or HDMI - those need real hardware (see docs/IMAGE_BUILD.md, "Hardware tests").
 # Usage: sudo scripts/boot-test-image.sh IMAGE [timeout_seconds]
 set -uo pipefail
+# shellcheck source=lib-binfmt.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-binfmt.sh"
+binfmt_register || echo "could not register qemu binfmt"
 IMG="${1:?usage: boot-test-image.sh IMAGE [timeout]}"
 TIMEOUT="${2:-480}"
 MNT="$(mktemp -d)"; LOOP=""; NSPID=""; MACHINE="piosboot$$"
@@ -14,7 +17,7 @@ cleanup() {
   [[ -n "$LOOP" ]] && losetup -d "$LOOP" 2>/dev/null
   rmdir "$MNT" 2>/dev/null
 }
-trap cleanup EXIT
+trap 'cleanup; binfmt_unregister' EXIT
 LOOP="$(losetup --find --show --partscan "$IMG")" || exit 2
 sleep 1
 mount "${LOOP}p2" "$MNT" && mount "${LOOP}p1" "$MNT/boot/firmware" || exit 2

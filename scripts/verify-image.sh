@@ -2,6 +2,8 @@
 # Static + emulated checks of a built PiOS image. Needs root, losetup, qemu-user-static (arm64 binfmt).
 # Usage: sudo scripts/verify-image.sh path/to/PiOS-NOVA-arm64.img
 set -uo pipefail
+# shellcheck source=lib-binfmt.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-binfmt.sh"
 IMG="${1:?usage: verify-image.sh IMAGE}"
 MNT="$(mktemp -d)"
 FAILS=0
@@ -17,7 +19,7 @@ cleanup() {
   [[ -n "$LOOP" ]] && losetup -d "$LOOP" 2>/dev/null
   rmdir "$MNT" 2>/dev/null
 }
-trap cleanup EXIT
+trap 'cleanup; binfmt_unregister' EXIT
 
 echo "== Partition table and file systems"
 LOOP="$(losetup --find --show --partscan "$IMG")" || { echo "cannot attach image"; exit 2; }
@@ -70,11 +72,8 @@ check "chromium installed (arm64)" bash -c "file -L '$MNT/usr/bin/chromium' | gr
 check "cage installed (arm64)" bash -c "file -L '$MNT/usr/bin/cage' | grep -q aarch64"
 if [[ -x /usr/bin/qemu-aarch64-static || -x /usr/libexec/qemu-binfmt/aarch64-binfmt-P ]]; then
   mount -t proc proc "$MNT/proc"; mount --rbind /sys "$MNT/sys"; mount --rbind /dev "$MNT/dev"
-  # Make sure the kernel runs arm64 binaries through qemu, and that the interpreter exists inside the chroot.
-  update-binfmts --enable qemu-aarch64 >/dev/null 2>&1 || true
-  [[ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]] || { mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null; update-binfmts --enable qemu-aarch64 >/dev/null 2>&1; }
-  [[ -x /usr/bin/qemu-aarch64-static ]] && cp /usr/bin/qemu-aarch64-static "$MNT/usr/bin/qemu-aarch64-static"
-  echo "     binfmt: $(head -n1 /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null || echo 'qemu-aarch64 NOT registered')"
+  binfmt_register || echo '     could not register qemu binfmt'
+  echo "     binfmt: $(cat /proc/sys/fs/binfmt_misc/qemu-aarch64* 2>/dev/null | tr '\n' ' ' || echo none)"
   check "python imports all arm64 dependencies" chroot "$MNT" /usr/bin/python3 -c "import fastapi, starlette, uvicorn, psutil, argon2, multipart, pydantic, pydantic_core, sqlite3; print('ok')"
   # Smoke-run the real application inside the arm64 root file system.
   rm -rf "$MNT/tmp/piosdata"; mkdir -p "$MNT/tmp/piosdata"

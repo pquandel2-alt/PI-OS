@@ -74,7 +74,13 @@ if [[ -x /usr/bin/qemu-aarch64-static || -x /usr/libexec/qemu-binfmt/aarch64-bin
   mount -t proc proc "$MNT/proc"; mount --rbind /sys "$MNT/sys"; mount --rbind /dev "$MNT/dev"
   binfmt_register || echo '     could not register qemu binfmt'
   echo "     binfmt: $(cat /proc/sys/fs/binfmt_misc/qemu-aarch64* 2>/dev/null | tr '\n' ' ' || echo none)"
-  check "python imports all arm64 dependencies" chroot "$MNT" /usr/bin/python3 -c "import fastapi, starlette, uvicorn, psutil, argon2, multipart, pydantic, pydantic_core, sqlite3; print('ok')"
+  check "python imports all arm64 dependencies" chroot "$MNT" /usr/bin/python3 -c "
+import fastapi, starlette, uvicorn, psutil, argon2, pydantic, pydantic_core, sqlite3
+try:
+    import python_multipart
+except ImportError:
+    import multipart
+print('ok')"
   # Smoke-run the real application inside the arm64 root file system.
   rm -rf "$MNT/tmp/piosdata"; mkdir -p "$MNT/tmp/piosdata"
   chroot "$MNT" env PIOS_DATA=/tmp/piosdata PIOS_WEB=/opt/pios/web PIOS_APPS=/opt/pios/apps \

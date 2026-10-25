@@ -54,7 +54,11 @@ image — download from the run if your plan allows it, or attach the image to a
 7. Best-effort boot test (`scripts/boot-test-image.sh`): boots the root file system with systemd as PID 1 in
    `systemd-nspawn` under emulation and waits for `pios.service`. Informational only.
 
-The latest results are documented in the pull request. A passing verification does **not** prove that the Pi 5 boots.
+**Latest result (run 40233593369, 2026-10-25):** build succeeded, `ALL CHECKS PASSED` (50 checks, including the real
+backend running in the arm64 root file system under qemu). The emulated boot test (item 7) did **not** work: `systemd-nspawn`
+aborted on the GitHub runner before starting the image (`Failed to determine whether the unified cgroups hierarchy is used`),
+so it says nothing about the image. Fixing it (e.g. a privileged container or a qemu-system VM) is open work.
+A passing verification does **not** prove that the Pi 5 boots.
 
 ## Hardware tests (still open)
 

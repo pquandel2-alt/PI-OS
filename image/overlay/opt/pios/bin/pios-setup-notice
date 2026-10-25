@@ -1,0 +1,20 @@
+#!/bin/bash
+# Publishes the first-run setup code where only someone with physical access sees it:
+# the text console and the FAT boot partition of the SD card. Removes it once setup is complete.
+STATE=/var/lib/pios
+ISSUE=/etc/issue.d/50-pios.issue
+BOOTFILE=/boot/firmware/PIOS-SETUP.txt
+for _ in $(seq 1 60); do
+  [ -e "$STATE/setup-complete" ] || [ -s "$STATE/setup-code" ] && break
+  sleep 1
+done
+if [ -e "$STATE/setup-complete" ]; then
+  rm -f "$ISSUE" "$BOOTFILE"
+elif [ -s "$STATE/setup-code" ]; then
+  code=$(tr -d '\n' < "$STATE/setup-code")
+  printf '\nPiOS NOVA setup code: %s\nOpen http://%s.local or the IP address of this device in a browser.\n\n' "$code" "$(hostname)" > "$ISSUE"
+  if [ -d /boot/firmware ]; then
+    printf 'PiOS NOVA first-run setup code: %s\r\nOpen http://%s.local in a browser on the same network and enter this code.\r\nThis file is deleted automatically after the administrator account has been created.\r\n' "$code" "$(hostname)" > "$BOOTFILE"
+  fi
+fi
+exit 0

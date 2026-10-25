@@ -1,0 +1,33 @@
+#!/bin/bash
+# Start the local kiosk while a monitor is connected, stop it when the last one is unplugged.
+CONF=/etc/pios/pios.conf
+mode() {
+  local KIOSK=auto
+  # shellcheck disable=SC1090
+  [ -r "$CONF" ] && . "$CONF"
+  [ -e /boot/firmware/pios-kiosk-off ] && KIOSK=off
+  echo "${KIOSK:-auto}"
+}
+connected() {
+  local s
+  for s in /sys/class/drm/card*-*/status; do
+    [ -r "$s" ] || continue
+    case "$s" in *Writeback*|*Composite*|*Virtual*) continue ;; esac
+    [ "$(cat "$s")" = connected ] && return 0
+  done
+  return 1
+}
+absent=0
+while true; do
+  if [ "$(mode)" = auto ] && connected; then
+    absent=0
+    systemctl is-active --quiet pios-kiosk.service || { echo "monitor connected: starting local desktop"; systemctl start pios-kiosk.service; }
+  else
+    absent=$((absent + 1))
+    # require ~9 s without a monitor before stopping (cable/HDMI renegotiation flaps)
+    if [ "$absent" -ge 3 ] && systemctl is-active --quiet pios-kiosk.service; then
+      echo "no monitor: stopping local desktop"; systemctl stop pios-kiosk.service
+    fi
+  fi
+  sleep 3
+done

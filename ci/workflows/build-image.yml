@@ -1,0 +1,88 @@
+name: Build PiOS image
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Attach the image to a private draft release"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+concurrency:
+  group: image-build
+  cancel-in-progress: false
+jobs:
+  image:
+    runs-on: ubuntu-24.04   # x86_64; arm64 userland is emulated by qemu inside pi-gen's Docker build
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space (the build needs ~15 GB)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Install host tools for verification
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static binfmt-support systemd-container dosfstools e2fsprogs file xz-utils
+
+      - name: Build image with pi-gen
+        shell: bash
+        run: bash scripts/build-image.sh 2>&1 | tee build.log
+
+      - name: Verify image (file systems, payload, services, arm64 runtime)
+        shell: bash
+        run: sudo scripts/verify-image.sh image-build/pi-gen/deploy/PiOS-NOVA-arm64.img 2>&1 | tee verify.log
+
+      - name: Compress and checksum
+        run: |
+          cd image-build/pi-gen/deploy
+          xz -T0 -6 -k PiOS-NOVA-arm64.img
+          sha256sum PiOS-NOVA-arm64.img.xz > PiOS-NOVA-arm64.img.xz.sha256
+          ls -lh
+          echo "### PiOS NOVA image" >> "$GITHUB_STEP_SUMMARY"
+          { cat build-info.json; echo; ls -lh PiOS-NOVA-arm64.img.xz; cat PiOS-NOVA-arm64.img.xz.sha256; } | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          echo '#### Verification' >> "$GITHUB_STEP_SUMMARY"; sed 's/^/    /' "$GITHUB_WORKSPACE/verify.log" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Boot test under emulation (best effort)
+        shell: bash
+        id: boot
+        continue-on-error: true
+        run: sudo scripts/boot-test-image.sh image-build/pi-gen/deploy/PiOS-NOVA-arm64.img 600 2>&1 | tee boot-test.log
+
+      - name: Record boot test result
+        if: always()
+        run: |
+          { echo '#### Emulated boot test'; echo "outcome: ${{ steps.boot.outcome }}"; sed 's/^/    /' boot-test.log 2>/dev/null | tail -n 25; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        continue-on-error: true   # fails if the account's Actions storage quota is too small; the release below is the fallback
+        uses: actions/upload-artifact@v4
+        with:
+          name: PiOS-NOVA-arm64
+          path: |
+            image-build/pi-gen/deploy/PiOS-NOVA-arm64.img.xz
+            image-build/pi-gen/deploy/PiOS-NOVA-arm64.img.xz.sha256
+            image-build/pi-gen/deploy/build-info.json
+            verify.log
+            boot-test.log
+            build.log
+          compression-level: 0
+          retention-days: 14
+
+      - name: Private draft release
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          [[ "$GITHUB_REF_TYPE" == tag ]] || tag="build-${GITHUB_RUN_NUMBER}"
+          size=$(stat -c %s image-build/pi-gen/deploy/PiOS-NOVA-arm64.img.xz)
+          if (( size > 2000000000 )); then echo "image larger than the 2 GB release asset limit"; exit 1; fi
+          gh release create "$tag" --draft --prerelease --target "$GITHUB_SHA" --title "PiOS NOVA $tag" \
+            --notes "Unverified on real hardware. See docs/IMAGE_BUILD.md. Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            image-build/pi-gen/deploy/PiOS-NOVA-arm64.img.xz image-build/pi-gen/deploy/PiOS-NOVA-arm64.img.xz.sha256 image-build/pi-gen/deploy/build-info.json verify.log boot-test.log

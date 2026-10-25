@@ -8,7 +8,7 @@ import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 
 from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerifyMismatchError
+from argon2.exceptions import VerificationError, VerifyMismatchError
 from fastapi import Depends, HTTPException, Request
 
 from . import config
@@ -45,7 +45,7 @@ def verify_password(stored: str | None, password: str) -> bool:
     try:
         hasher.verify(stored or _DUMMY, password)
         return stored is not None
-    except (VerifyMismatchError, InvalidHashError):
+    except (VerifyMismatchError, VerificationError, ValueError):  # ValueError covers InvalidHash(Error) in all versions
         return False
 
 

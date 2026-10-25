@@ -75,13 +75,13 @@ class Manifest(BaseModel):
 
 SYSTEM_APPS = [
     Manifest(id="files", name="NOVA Files", version="0.1.0", kind="system", icon="files",
-             description="Dateien verwalten", permissions=["files.read", "files.write"]),
+             description="Dateien verwalten", permissions=["files.read", "files.write"], window=WindowSpec(width=900, height=580)),
     Manifest(id="notes", name="NOVA Notes", version="0.1.0", kind="system", icon="notes",
-             description="Notizen schreiben", permissions=["storage"]),
+             description="Notizen schreiben", permissions=["storage"], window=WindowSpec(width=800, height=540)),
     Manifest(id="monitor", name="NOVA Monitor", version="0.1.0", kind="system", icon="monitor",
-             description="Systemstatus", permissions=["system.read"]),
+             description="Systemstatus", permissions=["system.read"], window=WindowSpec(width=780, height=600)),
     Manifest(id="settings", name="NOVA Settings", version="0.1.0", kind="system", icon="settings",
-             description="Einstellungen", permissions=[]),
+             description="Einstellungen", permissions=[], window=WindowSpec(width=720, height=560)),
 ]
 
 

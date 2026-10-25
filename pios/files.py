@@ -10,7 +10,7 @@ from .security import current_user
 
 router = APIRouter(prefix="/api/files")
 # Types the browser may render inline. Everything else (HTML, SVG, JS...) is forced to download.
-INLINE_OK = ("image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp", "application/pdf",
+INLINE_OK = ("image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp",
              "audio/mpeg", "audio/ogg", "audio/wav", "audio/flac", "video/mp4", "video/webm", "text/plain")
 
 

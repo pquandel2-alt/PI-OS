@@ -1,0 +1,40 @@
+/* NOVA Interface — design tokens */
+:root {
+  --bg: #080D17;
+  --panel: #172538;
+  --cyan: #28DFFF;
+  --violet: #9C80FF;
+  --text: #F4F8FF;
+  --warn: #FFA24D;
+  --danger: #FF5C6C;
+  --ok: #3DF5B0;
+
+  --accent: var(--cyan);
+  --accent-2: var(--violet);
+  --accent-rgb: 40, 223, 255;
+  --muted: rgba(244, 248, 255, .62);
+  --faint: rgba(244, 248, 255, .38);
+  --line: rgba(var(--accent-rgb), .20);
+  --line-strong: rgba(var(--accent-rgb), .45);
+  --surface: #111c2d;
+  --surface-2: rgba(23, 37, 56, .62);
+  --surface-3: rgba(255, 255, 255, .045);
+  --hover: rgba(var(--accent-rgb), .10);
+  --glow: 0 0 18px rgba(var(--accent-rgb), .35);
+  --shadow: 0 18px 50px rgba(0, 0, 0, .55);
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --row: 36px;
+  --font: Inter, "Segoe UI", system-ui, -apple-system, "DejaVu Sans", sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
+  --ease: cubic-bezier(.22, .8, .24, 1);
+  --t-fast: 120ms; --t: 220ms;
+  --topbar: 40px; --dock: 68px;
+}
+[data-accent="violet"] { --accent: var(--violet); --accent-2: var(--cyan); --accent-rgb: 156, 128, 255; }
+[data-density="compact"] { --row: 28px; --s3: 8px; --s4: 12px; }
+/* Animations disabled by the user or by prefers-reduced-motion */
+[data-motion="off"] *, [data-motion="off"] *::before, [data-motion="off"] *::after {
+  animation: none !important; transition: none !important;
+}

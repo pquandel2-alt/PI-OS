@@ -49,7 +49,7 @@ for f in opt/pios/current/pios/main.py opt/pios/current/web/index.html opt/pios/
 done
 check "bin scripts executable" bash -c "for f in '$MNT'/opt/pios/current/bin/*; do test -x \$f || exit 1; done"
 check "/opt/pios is root-owned (code not writable by service)" bash -c "[ \"\$(stat -c %u '$MNT/opt/pios/current/pios/main.py')\" = 0 ]"
-check "no world-writable files in /opt/pios" bash -c "! find '$MNT/opt/pios' -perm -0002 | grep -q ."
+check "no world-writable files in /opt/pios (symlinks excluded)" bash -c "! find '$MNT/opt/pios' ! -type l -perm -0002 | grep -q ."
 check "no secrets/dev files shipped" bash -c "! find '$MNT/opt/pios' \( -name '*.db' -o -name '.env' -o -name 'setup-code' -o -name '*.pem' \) | grep -q ."
 check "service users exist (pios, pios-kiosk)" bash -c "grep -q '^pios:' '$MNT/etc/passwd' && grep -q '^pios-kiosk:' '$MNT/etc/passwd'"
 check "service users cannot log in" bash -c "grep -E '^(pios|pios-kiosk):' '$MNT/etc/passwd' | grep -v nologin | wc -l | grep -qx 0"

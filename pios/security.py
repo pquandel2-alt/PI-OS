@@ -126,7 +126,9 @@ def csrf_guard(request: Request):
 
     A cross-site page cannot set X-PiOS without a CORS preflight (which we never allow).
     """
-    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api/"):
+    path = request.url.path
+    # /api/sdk/* authenticates with a bearer token, never with the ambient session cookie, so it is not CSRF-able.
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/") and not path.startswith("/api/sdk/"):
         if request.headers.get("x-pios") != "1":
             raise HTTPException(403, "Ungültige Anfrage")
         origin = request.headers.get("origin")

@@ -93,3 +93,11 @@ def test_bad_manifests_are_skipped(tmp_path):
     r = Registry(tmp_path)
     assert set(r.errors) == {"bad", "future", "evil"}
     assert "bad" not in r.apps
+
+
+def test_sdk_needs_no_csrf_header_but_cookie_api_does(admin):
+    from pios import security
+    h = {"Authorization": "Bearer " + security.issue_app_token("hello", 1, ["storage"]), "X-PiOS": ""}
+    assert admin.put("/api/sdk/storage/k", json={"value": 1}, headers=h).status_code == 200
+    # a cookie alone is not accepted by the SDK API
+    assert admin.put("/api/sdk/storage/k", json={"value": 1}, headers={"X-PiOS": ""}).status_code == 401

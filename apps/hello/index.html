@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de" data-accent="cyan">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hello NOVA</title>
+  <link rel="stylesheet" href="/sdk/pios-ui.css">
+  <link rel="stylesheet" href="hello.css">
+</head>
+<body>
+  <main class="hello">
+    <div class="label">PiOS SDK · Beispiel-App</div>
+    <h1 id="greeting">Hallo!</h1>
+    <p class="muted">Diese App läuft in einer Sandbox ohne Netzwerkzugriff. Alles läuft über <code>pios.*</code>, die Berechtigungen prüft der Server.</p>
+    <div class="panel corners">
+      <div class="label">Zähler (pios.storage)</div>
+      <div id="count" class="big mono">–</div>
+      <button class="btn primary" id="inc" type="button">+1</button>
+      <button class="btn" id="reset" type="button">Zurücksetzen</button>
+    </div>
+    <div class="panel corners">
+      <div class="label">System (pios.system)</div>
+      <div id="sys" class="mono muted">–</div>
+    </div>
+    <button class="btn" id="notify" type="button">Benachrichtigung senden</button>
+    <p class="error-text" id="err" role="alert"></p>
+  </main>
+  <script src="/sdk/pios-sdk.js"></script>
+  <script src="hello.js"></script>
+</body>
+</html>

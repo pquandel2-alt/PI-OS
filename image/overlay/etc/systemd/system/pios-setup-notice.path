@@ -1,0 +1,10 @@
+[Unit]
+Description=Update the PiOS setup notice when setup state changes
+
+[Path]
+PathChanged=/var/lib/pios/setup-code
+PathChanged=/var/lib/pios/setup-complete
+Unit=pios-setup-notice.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/bin/bash
+# Block until the PiOS backend answers (max 90 s) so the kiosk never shows a connection error.
+for _ in $(seq 1 90); do
+  curl -fsS -o /dev/null --max-time 2 http://127.0.0.1/healthz && exit 0
+  sleep 1
+done
+echo "PiOS backend did not become ready" >&2
+exit 1

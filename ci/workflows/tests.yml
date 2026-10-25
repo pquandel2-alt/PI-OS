@@ -1,0 +1,47 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend-trixie:
+    # Runs the backend tests against the exact Debian trixie packages that ship in the PiOS image.
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    steps:
+      - name: Install Debian packages
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates python3 python3-fastapi python3-uvicorn \
+            python3-psutil python3-argon2 python3-python-multipart python3-httpx python3-pytest
+      - uses: actions/checkout@v4
+      - run: python3 -m pytest -q -p no:cacheprovider tests --ignore=tests/e2e
+  backend-pip:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q tests --ignore=tests/e2e
+  frontend-e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt -r requirements-dev.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m pytest -q tests/e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: e2e-screenshots, path: tests/e2e/screens, if-no-files-found: ignore, retention-days: 3 }
+  shell-and-js:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y -qq shellcheck
+      - run: shellcheck -S warning scripts/*.sh image/overlay/opt/pios/bin/* image/stage-pios/prerun.sh image/stage-pios/00-pios/01-run.sh
+      - run: scripts/check-js.sh

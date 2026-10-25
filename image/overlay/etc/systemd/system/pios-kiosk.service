@@ -1,0 +1,27 @@
+[Unit]
+Description=PiOS NOVA local desktop (cage + Chromium kiosk)
+After=systemd-user-sessions.service systemd-logind.service getty@tty1.service pios.service
+Wants=pios.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=pios-kiosk
+Group=pios-kiosk
+EnvironmentFile=-/etc/pios/pios.conf
+Environment=WLR_NO_HARDWARE_CURSORS=0
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+ExecStartPre=/opt/pios/bin/pios-wait-ready
+ExecStart=/usr/bin/cage -- /opt/pios/bin/pios-kiosk-browser
+Restart=on-failure
+RestartSec=5
+# Not enabled directly: pios-display.service starts and stops it with the monitor.

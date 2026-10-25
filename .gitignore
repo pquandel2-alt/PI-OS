@@ -5,3 +5,8 @@ __pycache__/
 .env
 .DS_Store
 .pytest_cache/
+
+image-build/
+*.img
+*.img.xz
+tests/e2e/screens/

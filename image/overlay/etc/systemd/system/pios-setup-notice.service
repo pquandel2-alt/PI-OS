@@ -1,0 +1,10 @@
+[Unit]
+Description=Show the PiOS first-run setup code (console + boot partition)
+After=pios.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pios/bin/pios-setup-notice
+
+[Install]
+WantedBy=multi-user.target

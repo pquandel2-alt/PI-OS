@@ -1,0 +1,4 @@
+.hello { display: grid; gap: var(--s4); max-width: 520px; margin: 0 auto; }
+h1 { margin: 0; font-weight: 300; letter-spacing: .06em; }
+.big { font-size: 40px; color: var(--accent); margin: var(--s2) 0 var(--s3); }
+code { color: var(--accent); }

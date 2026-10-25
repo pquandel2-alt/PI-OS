@@ -1,0 +1,5 @@
+/* NOVA Interface for apps: the same tokens and components as the shell. */
+@import url("/css/tokens.css");
+@import url("/css/base.css");
+@import url("/css/components.css");
+body { overflow: auto; padding: var(--s4); }

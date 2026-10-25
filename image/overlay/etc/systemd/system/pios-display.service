@@ -1,0 +1,13 @@
+[Unit]
+Description=PiOS local display manager (starts the HDMI kiosk when a monitor is connected)
+After=pios.service
+Wants=pios.service
+
+[Service]
+Type=simple
+ExecStart=/opt/pios/bin/pios-display-watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+{
+  "validated": false,
+  "hardware": "",
+  "version": "0.0.0",
+  "note": "Set validated=true, hardware (e.g. 'Raspberry Pi 5 8GB, SD+NVMe'), and the validated version ONLY after the checklist in docs/IMAGE_BUILD.md was completed on a real device. CI results alone never make a release stable."
+}

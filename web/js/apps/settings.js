@@ -8,7 +8,7 @@ import { button, field, toggle, segmented, confirmDialog, promptDialog, toast, e
 const row = (title, hint, control) => h('div', { class: 'set-row' }, h('div', { class: 'set-text' }, h('b', {}, title), hint && h('div', { class: 'hint' }, hint)), control);
 
 export default {
-  mount(body, { win, wm, params }) {
+  mount(body, { win, wm, params, launch }) {
     const tabs = { profile: 'Profil', look: 'Darstellung', desktop: 'Desktop', ...(state.me.role === 'admin' ? { users: 'Benutzer' } : {}), apps: 'Apps', about: 'System' };
     const content = h('div', { class: 'set-content' });
     const tabBar = h('div', { class: 'tabs', role: 'tablist' });
@@ -108,8 +108,24 @@ export default {
         clear(box).append(h('div', { class: 'about-head' }, h('div', { class: 'brand' }, 'PiOS ', h('b', {}, 'NOVA')), h('span', { class: 'chip' }, 'Version ' + s.version)),
           kv('Hostname', s.net.hostname), kv('Adressen', s.net.interfaces.filter(i => i.ip).map(i => `${i.ip} (${i.name})`).join(', ') || '–'),
           kv('Laufzeit', duration(s.uptime)), kv('App-API', 'v' + state.appMeta.api), kv('Browser', navigator.userAgent.slice(0, 80)));
+        if (state.me.role === 'admin') el.append(await updatesCard());
       },
     };
+    async function updatesCard() {
+      const card = h('div', { class: 'panel corners set-card upd-settings' }, h('div', { class: 'label panel-title' }, icon('update'), ' Updates'));
+      try {
+        const u = await api.get('updates', { quiet: true });
+        card.append(
+          row('Installierte Version', u.available ? `Version ${u.available.version} ist verfügbar.` : 'PiOS ist aktuell.', h('b', { class: 'mono' }, u.installed.version || '–')),
+          row('Updatekanal', 'Beta enthält neue, noch nicht auf echter Hardware validierte Versionen.', segmented([['stable', 'Stable'], ['beta', 'Beta']], u.channel, async v => {
+            try { await api.put('updates/config', { channel: v }); api.post('updates/check').catch(() => {}); } catch (x) { errorToast(x); }
+          })),
+          row('Update Center', 'Prüfen, installieren, Verlauf und Rollback.', button(u.available ? 'Update verfügbar – öffnen' : 'Öffnen', { icon: 'update', variant: u.available ? 'primary' : '', onclick: () => launch('updates') })));
+      } catch (e) {
+        card.append(h('div', { class: 'hint' }, e.status === 503 ? 'Der Update-Dienst ist nur im PiOS-Image aktiv.' : e.message));
+      }
+      return card;
+    }
     show(current);
     return { params: p => p?.tab && show(p.tab) };
   },

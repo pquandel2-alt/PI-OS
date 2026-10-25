@@ -1,0 +1,89 @@
+# Signed OTA release: test -> package -> sign -> verify -> publish (GitHub Release). Triggered by a version tag.
+# Move to .github/workflows/ (needs a token with the `workflow` scope: gh auth refresh -s workflow).
+# One-time setup: repository secret PIOS_UPDATE_SIGNING_KEY (already set), optionally an Environment "release" with a required reviewer.
+name: Release (OTA update package)
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd shellcheck
+      - run: pip install -r requirements.txt -r requirements-dev.txt cryptography playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Tag must equal the version in the source
+        run: |
+          v="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pios/__init__.py)"
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match pios.__version__ $v"; exit 1; }
+      - run: python -m pytest -q tests
+      - run: scripts/check-js.sh
+      - run: shellcheck -x -S warning scripts/*.sh image/overlay/opt/pios/bin/*
+      - name: Secret scan (no private key material in the tree)
+        run: |
+          ! git grep -n -I -E 'BEGIN (EC |RSA |OPENSSH |)PRIVATE KEY|private\.key' -- . ':!scripts/release_tool.py' ':!tests' ':!docs' ':!ci' ':!.gitignore' ':!image/stage-pios' ':!scripts/verify-image.sh'
+
+  package:
+    needs: checks
+    runs-on: ubuntu-24.04
+    outputs:
+      channel: ${{ steps.meta.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd && pip install cryptography
+      - id: meta
+        name: Channel from the tag (X.Y.Z-beta.N -> beta; plain X.Y.Z -> stable, only if hardware-validated)
+        run: |
+          case "$GITHUB_REF_NAME" in *-beta*|*-rc*|*-alpha*) echo channel=beta >> "$GITHUB_OUTPUT" ;; *) echo channel=stable >> "$GITHUB_OUTPUT" ;; esac
+      - name: Build package + manifest (refuses stable without recorded hardware validation)
+        run: |
+          printf '%s\n' "Release $GITHUB_REF_NAME" > /tmp/notes.md
+          [ -f release/NOTES.md ] && cat release/NOTES.md > /tmp/notes.md
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" python scripts/release_tool.py package \
+            --channel "${{ steps.meta.outputs.channel }}" --out dist --notes /tmp/notes.md --min-version "${MIN_VERSION:-0.2.0}"
+      - uses: actions/upload-artifact@v4
+        with: { name: unsigned-package, path: dist, retention-days: 3 }
+
+  sign-and-publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    environment: release            # optional protection: required reviewers
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd && pip install cryptography
+      - uses: actions/download-artifact@v4
+        with: { name: unsigned-package, path: dist }
+      - name: Sign manifest (key from the secret; never echoed)
+        env:
+          PIOS_UPDATE_SIGNING_KEY: ${{ secrets.PIOS_UPDATE_SIGNING_KEY }}
+        run: |
+          [ -n "$PIOS_UPDATE_SIGNING_KEY" ] || { echo "signing key secret missing"; exit 1; }
+          echo "::add-mask::$PIOS_UPDATE_SIGNING_KEY"
+          python scripts/release_tool.py sign --manifest dist/PiOS-NOVA-update-*.manifest.json
+      - name: Verify exactly what will be published (signature with the key shipped in the image, checksum, contents)
+        run: |
+          python scripts/release_tool.py verify --manifest dist/PiOS-NOVA-update-*.manifest.json \
+            --sig dist/PiOS-NOVA-update-*.manifest.json.sig --package dist/PiOS-NOVA-update-*.tar.zst
+          (cd dist && sha256sum PiOS-NOVA-update-* > SHA256SUMS)
+      - name: Publish GitHub Release (beta = pre-release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flag=""; [ "${{ needs.package.outputs.channel }}" = beta ] && flag="--prerelease"
+          gh release create "$GITHUB_REF_NAME" $flag --title "PiOS NOVA $GITHUB_REF_NAME" --notes-file /tmp/notes.md dist/* \
+            || gh release upload "$GITHUB_REF_NAME" dist/* --clobber

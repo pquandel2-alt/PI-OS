@@ -65,3 +65,25 @@ export class Emitter {
   on(ev, fn) { (this.#h.get(ev) || this.#h.set(ev, new Set()).get(ev)).add(fn); return () => this.#h.get(ev)?.delete(fn); }
   emit(ev, data) { this.#h.get(ev)?.forEach(fn => { try { fn(data); } catch (e) { console.error(e); } }); }
 }
+
+/** Minimal, safe Markdown for release notes: "## heading", "- item", paragraphs, `code`. Builds DOM nodes, never HTML. */
+export function mdLite(text) {
+  const out = [];
+  let list = null;
+  const inline = line => {
+    const parts = String(line).split(/(`[^`]+`)/g);
+    return parts.map(p => (p.startsWith('`') && p.endsWith('`') && p.length > 2 ? h('code', {}, p.slice(1, -1)) : p));
+  };
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trimEnd();
+    if (/^\s*[-*] /.test(line)) {
+      if (!list) { list = h('ul', { class: 'md-list' }); out.push(list); }
+      list.append(h('li', {}, inline(line.replace(/^\s*[-*] /, ''))));
+    } else {
+      list = null;
+      if (/^#{1,3} /.test(line)) out.push(h('h4', { class: 'md-h' }, line.replace(/^#{1,3} /, '')));
+      else if (line.trim()) out.push(h('p', { class: 'md-p' }, inline(line)));
+    }
+  }
+  return out;
+}

@@ -103,6 +103,10 @@ def main():
     log.info("PiOS updater started; installed=%s keys=%d", updater.installed()["version"], len(updater.keys))
     srv = Server(sock, updater, uids)
     os.chmod(sock, 0o660)
+    try:
+        os.chown(sock, 0, pwd.getpwnam("pios").pw_gid)
+    except (KeyError, PermissionError):
+        pass
     stop = threading.Event()
     threading.Thread(target=lambda: (updater.recover(), scheduler(updater, stop)), daemon=True, name="recover+scheduler").start()
     try:

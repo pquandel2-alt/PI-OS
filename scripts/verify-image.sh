@@ -41,14 +41,14 @@ check "root/boot use PARTUUID (portable SD/SSD)" grep -q 'PARTUUID=' "$MNT/etc/f
 check "first-boot filesystem expansion hook present" bash -c "grep -q -E 'init_resize|firstboot|resize' '$MNT/boot/firmware/cmdline.txt' || test -e '$MNT/usr/lib/raspberrypi-sys-mods/firstboot' || ls '$MNT'/etc/systemd/system/*/rpi-resize* '$MNT'/usr/lib/systemd/system/*resize* 2>/dev/null | grep -q ."
 
 echo "== PiOS payload"
-for f in opt/pios/pios/main.py opt/pios/web/index.html opt/pios/web/js/main.js opt/pios/web/sdk/pios-sdk.js \
-         opt/pios/apps/hello/manifest.json etc/pios/pios.conf etc/pios-release \
+for f in opt/pios/current/pios/main.py opt/pios/current/web/index.html opt/pios/current/web/js/main.js opt/pios/current/web/sdk/pios-sdk.js \
+         opt/pios/current/apps/hello/manifest.json etc/pios/pios.conf etc/pios-release \
          etc/systemd/system/pios.service etc/systemd/system/pios-kiosk.service etc/systemd/system/pios-display.service \
-         opt/pios/bin/pios-kiosk-browser opt/pios/bin/pios-display-watch; do
+         opt/pios/current/bin/pios-kiosk-browser opt/pios/current/bin/pios-display-watch; do
   check "$f" test -s "$MNT/$f"
 done
-check "bin scripts executable" bash -c "for f in '$MNT'/opt/pios/bin/*; do test -x \$f || exit 1; done"
-check "/opt/pios is root-owned (code not writable by service)" bash -c "[ \"\$(stat -c %u '$MNT/opt/pios/pios/main.py')\" = 0 ]"
+check "bin scripts executable" bash -c "for f in '$MNT'/opt/pios/current/bin/*; do test -x \$f || exit 1; done"
+check "/opt/pios is root-owned (code not writable by service)" bash -c "[ \"\$(stat -c %u '$MNT/opt/pios/current/pios/main.py')\" = 0 ]"
 check "no world-writable files in /opt/pios" bash -c "! find '$MNT/opt/pios' -perm -0002 | grep -q ."
 check "no secrets/dev files shipped" bash -c "! find '$MNT/opt/pios' \( -name '*.db' -o -name '.env' -o -name 'setup-code' -o -name '*.pem' \) | grep -q ."
 check "service users exist (pios, pios-kiosk)" bash -c "grep -q '^pios:' '$MNT/etc/passwd' && grep -q '^pios-kiosk:' '$MNT/etc/passwd'"
@@ -58,6 +58,19 @@ check "avahi-daemon installed (pios.local)" test -x "$MNT/usr/sbin/avahi-daemon"
 check "SSH not enabled by default" bash -c "! test -e '$MNT/etc/systemd/system/multi-user.target.wants/ssh.service' && ! test -e '$MNT/boot/firmware/ssh'"
 check "boot partition has no setup code yet" bash -c "! test -e '$MNT/boot/firmware/PIOS-SETUP.txt'"
 echo "     release: $(tr '\n' ' ' < "$MNT/etc/pios-release")"
+
+echo "== Update Manager (OTA) layout"
+REL="$(sed -n 's/^PIOS_VERSION=//p' "$MNT/etc/pios-release")"
+check "current -> releases/$REL (relative symlink)" bash -c "[ \"\$(readlink '$MNT/opt/pios/current')\" = 'releases/$REL' ]"
+check "release.json matches image version" bash -c "grep -q '\"version\": \"$REL\"' '$MNT/opt/pios/releases/$REL/release.json'"
+check "release tree is not a symlink farm / has no pycache writes needed" bash -c "! find '$MNT/opt/pios/releases' -type l | grep -q ."
+check "updater code in /usr/lib/pios-updater (outside OTA tree)" test -s "$MNT/usr/lib/pios-updater/pios_updater/engine.py"
+check "trusted release public key installed" bash -c "ls '$MNT'/usr/share/pios/update-keys/*.pub"
+check "no private key material in image" bash -c "! grep -rIl -E 'private\.key|PIOS_UPDATE_SIGNING_KEY' '$MNT/usr/share/pios' '$MNT/usr/lib/pios-updater' '$MNT/opt/pios' '$MNT/etc/pios' 2>/dev/null | grep -q ."
+check "update channel preconfigured" bash -c "grep -q channel '$MNT/var/lib/pios-updater/config.json'"
+check "updater state dir is root-only (0700)" bash -c "[ \"\$(stat -c %a '$MNT/var/lib/pios-updater')\" = 700 ]"
+check "pios-updater.service enabled" bash -c "[ \"\$(systemctl --root='$MNT' is-enabled pios-updater.service 2>/dev/null)\" = enabled ]"
+check "zstd available for packages" test -x "$MNT/usr/bin/zstd"
 
 echo "== systemd enablement"
 for u in pios.service pios-display.service pios-setup-notice.service pios-setup-notice.path; do
@@ -75,7 +88,7 @@ if [[ -x /usr/bin/qemu-aarch64-static || -x /usr/libexec/qemu-binfmt/aarch64-bin
   binfmt_register || echo '     could not register qemu binfmt'
   echo "     binfmt: $(cat /proc/sys/fs/binfmt_misc/qemu-aarch64* 2>/dev/null | tr '\n' ' ' || echo none)"
   check "python imports all arm64 dependencies" chroot "$MNT" /usr/bin/python3 -c "
-import fastapi, starlette, uvicorn, psutil, argon2, pydantic, pydantic_core, sqlite3
+import fastapi, starlette, uvicorn, psutil, argon2, pydantic, pydantic_core, sqlite3, cryptography
 try:
     import python_multipart
 except ImportError:
@@ -83,8 +96,8 @@ except ImportError:
 print('ok')"
   # Smoke-run the real application inside the arm64 root file system.
   rm -rf "$MNT/tmp/piosdata"; mkdir -p "$MNT/tmp/piosdata"
-  chroot "$MNT" env PIOS_DATA=/tmp/piosdata PIOS_WEB=/opt/pios/web PIOS_APPS=/opt/pios/apps \
-    /usr/bin/python3 -m uvicorn pios.main:app --app-dir /opt/pios --host 127.0.0.1 --port 18080 >"$MNT/tmp/uvicorn.log" 2>&1 &
+  chroot "$MNT" env PIOS_DATA=/tmp/piosdata PIOS_WEB=/opt/pios/current/web PIOS_APPS=/opt/pios/current/apps \
+    /usr/bin/python3 -m uvicorn pios.main:app --app-dir /opt/pios/current --host 127.0.0.1 --port 18080 >"$MNT/tmp/uvicorn.log" 2>&1 &
   SRV_PID=$!
   up=0; for _ in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:18080/healthz 2>/dev/null && { up=1; break; }; sleep 1; done
   check "backend starts under arm64 emulation and answers /healthz" test "$up" = 1
@@ -97,6 +110,20 @@ print('ok')"
     tail -n 30 "$MNT/tmp/uvicorn.log"
   fi
   kill "$SRV_PID" 2>/dev/null; SRV_PID=""
+  # The real Update Manager engine, inside the arm64 root file system: loads the shipped key, reads the installed release.
+  check "Update Manager runs on arm64 and reads installed version + shipped key" chroot "$MNT" env PYTHONPATH=/usr/lib/pios-updater /usr/bin/python3 -c "
+import tempfile
+from pathlib import Path
+from pios_updater.engine import Paths, Updater, Env
+from pios_updater.source import GitHubSource
+from pios_updater.crypto import load_trusted_keys
+class E(Env): pass
+t = Path(tempfile.mkdtemp())
+u = Updater(Paths(root=Path('/opt/pios'), state=t, data=t, keys=Path('/usr/share/pios/update-keys')), GitHubSource(), E())
+assert len(u.keys) == 1, 'no key'
+assert u.installed()['version'] == '$REL', u.installed()
+print('ok')"
+  check "zstd decompresses on arm64" chroot "$MNT" /usr/bin/zstd --version
   rm -rf "$MNT/tmp/piosdata" "$MNT/tmp/uvicorn.log" "$MNT/usr/bin/qemu-aarch64-static"
 else
   fail "qemu-user-static (aarch64) not available: emulated checks skipped"

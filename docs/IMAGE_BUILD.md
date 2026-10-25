@@ -9,8 +9,10 @@ supported by the stock kernel/firmware (`kernel_2712.img`, `bcm2712-rpi-5-b.dtb`
 
 | Path | Content |
 |---|---|
-| `/opt/pios/{pios,web,apps,bin}` | application, root-owned, read-only for the service |
-| `/var/lib/pios` | data (`pios` user, mode 0700), created by `StateDirectory=` |
+| `/opt/pios/releases/<version>/{pios,web,apps,bin,release.json}` + `/opt/pios/current` symlink | application (identical to an OTA package), root-owned, read-only for the service |
+| `/usr/lib/pios-updater`, `/usr/share/pios/update-keys` | Update Manager and the pinned release public key (not OTA-updatable) |
+| `pios-updater.service` | enabled; signed OTA updates, backup, rollback — see [UPDATES.md](UPDATES.md) |
+| `/var/lib/pios`, `/var/lib/pios-updater` | data / updater state, downloads and backups (`pios` user, mode 0700), created by `StateDirectory=` |
 | `pios.service` | backend on port 80, hardened, enabled |
 | `pios-display.service` | enabled; starts `pios-kiosk.service` (cage + Chromium) while an HDMI monitor is connected |
 | `pios-setup-notice.{service,path}` | writes the first-run setup code to the console (`/etc/issue.d`) and `/boot/firmware/PIOS-SETUP.txt`, removes it after setup |

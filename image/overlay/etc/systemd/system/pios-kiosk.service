@@ -20,8 +20,8 @@ StandardOutput=journal
 StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
-ExecStartPre=/opt/pios/bin/pios-wait-ready
-ExecStart=/usr/bin/cage -- /opt/pios/bin/pios-kiosk-browser
+ExecStartPre=/opt/pios/current/bin/pios-wait-ready
+ExecStart=/usr/bin/cage -- /opt/pios/current/bin/pios-kiosk-browser
 Restart=on-failure
 RestartSec=5
 # Not enabled directly: pios-display.service starts and stops it with the monitor.

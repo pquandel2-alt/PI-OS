@@ -12,7 +12,7 @@ import { toast, contextMenu, button } from './ui.js';
 export async function startShell(root, { onLogout }) {
   const [appList, desktopState] = await Promise.all([api.get('apps'), api.get('desktop')]);
   state.appMeta = appList;
-  state.apps = appList.apps;
+  state.apps = appList.apps.filter(a => a.id !== 'updates' || state.me.role === 'admin');
   const saved = desktopState || { windows: {}, open: [] };
   const byId = id => state.apps.find(a => a.id === id);
 
@@ -136,6 +136,13 @@ export async function startShell(root, { onLogout }) {
     if (panel.classList.contains('hidden')) badge.classList.remove('hidden'); else renderPanel();
   });
   const offPrefs = bus.on('prefs', fmtClock);
+  const offVer = bus.on('version-changed', ({ to }) => {
+    toast('PiOS wurde aktualisiert', `Version ${to} – die Oberfläche wird neu geladen …`, 'info', 6000);
+    setTimeout(() => location.reload(), 2500);
+  });
+  const markUpdate = on => dockItems.get('updates')?.classList.toggle('has-update', on);
+  const offUpd = bus.on('notification', n => { if (n.app === 'updates' && /verfügbar/.test(n.title)) markUpdate(true); });
+  if (state.me.role === 'admin') api.get('updates', { quiet: true }).then(u => markUpdate(!!(u.available && u.available.compatible))).catch(() => {});
   startPolling();
   startEvents();
 
@@ -154,7 +161,7 @@ export async function startShell(root, { onLogout }) {
     teardown(); onLogout();
   }
   function teardown() {
-    clearInterval(clockTimer); offSys(); offOffline(); offNote(); offPrefs();
+    clearInterval(clockTimer); offSys(); offOffline(); offNote(); offPrefs(); offVer(); offUpd();
     stopPolling(); stopEvents();
     for (const w of [...wm.wins.values()]) w.emit('close');
   }

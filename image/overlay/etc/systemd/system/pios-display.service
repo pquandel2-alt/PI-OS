@@ -5,7 +5,7 @@ Wants=pios.service
 
 [Service]
 Type=simple
-ExecStart=/opt/pios/bin/pios-display-watch
+ExecStart=/opt/pios/current/bin/pios-display-watch
 Restart=always
 RestartSec=5
 

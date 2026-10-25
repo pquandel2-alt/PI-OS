@@ -164,7 +164,7 @@ class Sys:
 def system(tmp_path, keypair, gh):
     """An installed 0.1.0 system layout plus an Updater wired to the mock GitHub."""
     seed, pub = keypair
-    root, state, data, keys = tmp_path / "opt", tmp_path / "state", tmp_path / "data", tmp_path / "keys"
+    root, state, data, keys = tmp_path / "opt", tmp_path / "state", tmp_path / "sysdata", tmp_path / "keys"
     for d in (root / "releases", data, keys):
         d.mkdir(parents=True)
     (keys / "release.pub").write_text(pub + "\n")

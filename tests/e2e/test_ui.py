@@ -36,7 +36,7 @@ def open_app(page, name):
 
 
 def app_errors(page):
-    return [e for e in page.errors if "401" not in e]  # 401 before login is expected
+    return [e for e in page.errors if "401" not in e and "503" not in e]  # 401 before login / 503 (no updater in dev) are expected
 
 
 def shot(page, name):
@@ -216,7 +216,7 @@ def test_settings_theme_motion_and_password(page, server):
     page.click(".seg button:has-text('Cyan')")
     page.wait_for_function("() => document.body.dataset.accent === 'cyan' && document.body.dataset.motion === 'on'")
     page.click(".tabs button:has-text('System')")
-    assert "0.1.0" in page.inner_text(".about-head")
+    assert "0.2.0" in page.inner_text(".about-head")
     page.click(".tabs button:has-text('Profil')")
     pw = page.locator(".set-content form input[type=password]")
     pw.nth(0).fill("carols first password"); pw.nth(1).fill("an even longer password 42"); pw.nth(2).fill("an even longer password 42")
@@ -289,3 +289,75 @@ def test_mobile_layout(browser, server):
     shot(page, "mobile")
     assert page.errors == []
     ctx.close()
+
+
+STATUS = {"updater_api": 1, "installed": {"version": "0.2.0", "db_schema": 1, "dir": "0.2.0"}, "previous": {"version": "0.1.0", "db_schema": 1, "dir": "0.1.0"},
+          "channel": "beta", "auto_check": True, "snoozed_until": 0, "last_check": 1790000000, "last_success": 1790000000, "last_error": None, "retry_at": 0,
+          "failed_versions": {}, "busy": False, "job": None, "history": [{"time": 1789000000, "version": "0.2.0", "from": "0.1.0", "result": "success"}],
+          "available": {"version": "0.3.0", "channel": "beta", "prerelease": False, "released": "2026-10-26T10:00:00Z", "size": 12345678, "compatible": True, "problems": [],
+                        "min_version": "0.2.0", "file": "x", "tag": "v0.3.0", "highlights": ["Verbesserte Desktop-Performance", "Neue Systemanwendungen"],
+                        "notes": "## Neu\n- Schneller\n- Fehlerbehebungen"}}
+
+
+def mock_updater(page, status, posts=None):
+    import json as _j
+    page.route("**/api/updates/stream", lambda r: r.fulfill(status=200, content_type="text/event-stream", body=f"retry: 600000\nevent: status\ndata: {_j.dumps(status)}\n\n"))
+    page.route("**/api/updates", lambda r: r.fulfill(status=200, content_type="application/json", body=_j.dumps(status)) if r.request.method == "GET" else r.continue_())
+    def handler_for(resp):
+        def handler(route):
+            posts_seen.append((route.request.url, route.request.post_data))
+            route.fulfill(status=200, content_type="application/json", body=_j.dumps(resp))
+        return handler
+    for path, resp in (posts or {}).items():
+        page.route(f"**/api/updates/{path}", handler_for(resp))
+
+
+posts_seen = []
+
+
+def test_update_center_shows_update_and_installs(page, server):
+    login(page, server)
+    mock_updater(page, STATUS, {"install": {**STATUS, "busy": True}})
+    page.reload(); page.wait_for_selector(".dock")
+    assert page.locator(".dock-item.has-update").count() == 1, "dock hints at the pending update"
+    open_app(page, "NOVA Updates")
+    page.wait_for_selector(".upd-title:has-text('PiOS NOVA 0.3.0 verfügbar')")
+    assert "0.2.0" in page.inner_text(".upd-ver-num")
+    assert "Verbesserte Desktop-Performance" in page.inner_text(".upd-new")
+    assert page.locator(".upd-new .btn:has-text('Jetzt installieren')").is_enabled()
+    page.click(".upd-new .btn:has-text('Release Notes anzeigen')")
+    page.wait_for_selector(".modal .upd-notes:has-text('Schneller')"); page.click(".modal .btn.primary")
+    shot(page, "update-center")
+    page.click(".upd-new .btn:has-text('Jetzt installieren')")
+    page.click(".modal .btn.primary")
+    page.wait_for_timeout(500)
+    assert any("/api/updates/install" in u and '"version":"0.3.0"' in (d or "").replace(" ", "") for u, d in posts_seen)
+
+
+def test_update_center_progress_and_rollback_views(page, server):
+    login(page, server)
+    steps = [("download", "Update wird heruntergeladen", "running", 42), ("verify", "Signatur wird überprüft", "pending", None), ("health", "Systemprüfung läuft", "pending", None)]
+    job = {"id": "j1", "kind": "update", "from": "0.2.0", "to": "0.3.0", "state": "running", "step": "download", "error": None, "log": ["12:00:00 Lade Paket"],
+           "steps": [{"id": i, "label": l, "status": s, "percent": p} for i, l, s, p in steps]}
+    mock_updater(page, {**STATUS, "job": job})
+    page.reload(); page.wait_for_selector(".dock")
+    open_app(page, "NOVA Updates")
+    page.wait_for_selector(".upd-progress.run")
+    assert "42 %" in page.inner_text(".upd-progress") and "Update wird heruntergeladen" in page.inner_text(".upd-progress")
+    assert page.locator(".upd-new").count() == 0, "no second install while one is running"
+    shot(page, "update-progress")
+    page.unroute("**/api/updates/stream")
+    job2 = {**job, "state": "rolled_back", "error": "Systemprüfung fehlgeschlagen: version_active", "steps": [{**s, "status": "done" if i == 0 else "error" if i == 2 else "pending"} for i, s in enumerate(job["steps"])]}
+    mock_updater(page, {**STATUS, "job": job2, "history": [{"time": 1790000100, "version": "0.3.0", "from": "0.2.0", "result": "rolled_back", "error": job2["error"]}]})
+    page.reload(); page.wait_for_selector(".dock")
+    open_app(page, "NOVA Updates") if not page.locator(".win[aria-label='NOVA Updates']").count() else None
+    page.wait_for_selector(".upd-progress.warn")
+    assert "vorherige Version wiederhergestellt" in page.inner_text(".upd-progress")
+    assert "Zurückgesetzt" in page.inner_text(".upd-card:has(.upd-hist)")
+
+
+def test_update_center_without_updater_service(page, server):
+    login(page, server)
+    open_app(page, "NOVA Updates")
+    page.wait_for_selector(".empty:has-text('Update-Dienst nicht erreichbar')", timeout=8000)
+    assert app_errors(page) == []

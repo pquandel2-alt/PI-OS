@@ -30,7 +30,6 @@ python3 -m venv /opt/pios/.venv
 /opt/pios/.venv/bin/pip install --no-cache-dir -r /opt/pios/requirements.txt
 useradd --system --home-dir /opt/pios --shell /usr/sbin/nologin pios || true
 install -d -o pios -g pios -m 700 /var/lib/pios
-systemctl enable pios.service
 EOF
 SCRIPT
 chmod +x "$STAGE/00-run.sh"
@@ -61,6 +60,8 @@ SERVICE
 cat >> "$STAGE/00-run.sh" <<'SCRIPT'
 install -D -m 644 "${ROOTFS_DIR}/opt/pios/pios.service" "${ROOTFS_DIR}/etc/systemd/system/pios.service"
 rm "${ROOTFS_DIR}/opt/pios/pios.service"
+mkdir -p "${ROOTFS_DIR}/etc/systemd/system/multi-user.target.wants"
+ln -sfn /etc/systemd/system/pios.service "${ROOTFS_DIR}/etc/systemd/system/multi-user.target.wants/pios.service"
 SCRIPT
 # The official pi-gen container build requires privileged Docker access.
 ./build-docker.sh

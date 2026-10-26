@@ -82,6 +82,8 @@ SYSTEM_APPS = [
              description="Notizen schreiben", permissions=["storage"], window=WindowSpec(width=800, height=540)),
     Manifest(id="monitor", name="NOVA Monitor", version="0.2.0", kind="system", icon="monitor",
              description="Systemstatus", permissions=["system.read"], window=WindowSpec(width=780, height=600)),
+    Manifest(id="network", name="NOVA Verbindungen", version="0.3.0", kind="system", icon="net",
+             description="WLAN, Bluetooth, Eingabegeräte und Hardware", permissions=[], window=WindowSpec(width=980, height=680)),
     Manifest(id="shield", name="NOVA Shield", version="0.3.0", kind="system", icon="shield",
              description="Sicherheitscenter", permissions=[], window=WindowSpec(width=980, height=700)),
     Manifest(id="updates", name="NOVA Updates", version="0.2.0", kind="system", icon="update",

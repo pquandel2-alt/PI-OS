@@ -7,7 +7,7 @@ import pytest
 
 from pios_connd import bluez as bz
 from pios_connd.ipc import OpError
-from tests.connd.dbusenv import bt_bus, bt_mock, bt_server, system_bus      # noqa: F401
+
 
 MAC = "11:22:33:44:55:66"
 DEV = "/org/bluez/hci0/dev_11_22_33_44_55_66"

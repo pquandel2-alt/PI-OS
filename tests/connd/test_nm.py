@@ -3,7 +3,7 @@ import pytest
 
 from pios_connd import nm as nmmod
 from pios_connd.ipc import OpError
-from tests.connd.dbusenv import nm_mock, recording, system_bus      # noqa: F401  (fixtures)
+from tests.connd.dbusenv import recording
 
 DEV_ACTIVATED, DEV_DISCONNECTED, DEV_UNAVAILABLE = 100, 30, 20
 

@@ -9,7 +9,9 @@ import struct
 import subprocess
 from pathlib import Path
 
-from . import osstatus
+import re
+
+from . import osstatus, packages
 
 log = logging.getLogger("pios-sysops")
 CLAMD = "clamav-daemon.service"
@@ -59,9 +61,22 @@ def rss_mb(pid) -> float | None:
     return None
 
 
+PKG_UNIT = "pios-pkg-install@{}.service"
+OFFICIAL = ("deb.debian.org", "security.debian.org", "archive.raspberrypi.com", "archive.raspberrypi.org", "ftp.debian.org")
+
+
+def _run(cmd, timeout=20):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
 class Ops:
-    def __init__(self, ctl: Systemctl | None = None):
+    def __init__(self, ctl: Systemctl | None = None, runner=_run):
         self.ctl = ctl or Systemctl()
+        self.runner = runner
 
     def ping(self, a): return {"ok": True}
 
@@ -117,7 +132,47 @@ class Ops:
             raise OpError(f"Timer konnte nicht geändert werden: {e[:200]}")
         return {"auto_security": flag}
 
-    METHODS = {"ping": ping, "clamd.start": clamd_start, "clamd.stop": clamd_stop, "clamd.status": clamd_status, "signatures.update": sig_update,
+    # ---- allow-listed driver/firmware packages (official APT sources only, confirmed version) -------------------------------------
+    @staticmethod
+    def _pkg(a) -> str:
+        p = a.get("package")
+        if not isinstance(p, str) or not re.fullmatch(r"[a-z0-9][a-z0-9+.-]{1,60}", p):
+            raise OpError("Ungültiger Paketname", "bad_request")
+        if p not in packages.ALLOWED:
+            raise OpError(f"Das Paket „{p}“ steht nicht auf der Liste der installierbaren Treiber-/Firmware-Pakete.", "not_allowed")
+        return p
+
+    def _candidate(self, pkg):
+        rc, out = self.runner(["apt-cache", "policy", pkg])
+        cand = re.search(r"Candidate:\s*(\S+)", out)
+        inst = re.search(r"Installed:\s*(\S+)", out)
+        hosts = {re.sub(r"^https?://([^/]+).*", r"\1", m) for m in re.findall(r"^\s+\d+\s+(https?://\S+)", out, re.M)}
+        return (cand.group(1) if cand and cand.group(1) != "(none)" else ""), (inst.group(1) if inst and inst.group(1) != "(none)" else ""), hosts
+
+    def pkg_status(self, a):
+        p = self._pkg(a)
+        cand, inst, hosts = self._candidate(p)
+        st = self.ctl.show(PKG_UNIT.format(p), "ActiveState", "Result")
+        return {"package": p, "candidate": cand, "installed": inst, "official": bool(hosts) and hosts <= set(OFFICIAL), "running": st.get("ActiveState") in ("active", "activating"),
+                "last_result": st.get("Result", "unknown"), "description": packages.ALLOWED[p]}
+
+    def pkg_install(self, a):
+        p = self._pkg(a)
+        cand, inst, hosts = self._candidate(p)
+        if not cand:
+            raise OpError("Das Paket ist in den konfigurierten Quellen nicht verfügbar (erst nach Updates suchen).", "unavailable")
+        if not hosts or not hosts <= set(OFFICIAL):
+            raise OpError("Das Paket stammt nicht ausschließlich aus den offiziellen Debian-/Raspberry-Pi-OS-Quellen und wird nicht installiert.", "untrusted_source")
+        if a.get("version") != cand:
+            raise OpError(f"Die verfügbare Version hat sich geändert ({cand}). Bitte erneut bestätigen.", "version_changed")
+        if inst == cand:
+            raise OpError("Dieses Paket ist bereits in der aktuellen Version installiert.", "already_installed")
+        if self.ctl.show(PKG_UNIT.format(p), "ActiveState").get("ActiveState") in ("active", "activating"):
+            raise OpError("Die Installation läuft bereits.", "busy")
+        self.ctl.start(PKG_UNIT.format(p))
+        return {"started": True, "package": p, "version": cand, "reboot_hint": "Nach der Installation von Firmware ist ein Neustart (oder erneutes Laden des Treibers) nötig."}
+
+    METHODS = {"pkg.status": pkg_status, "pkg.install": pkg_install, "ping": ping, "clamd.start": clamd_start, "clamd.stop": clamd_stop, "clamd.status": clamd_status, "signatures.update": sig_update,
                "signatures.status": sig_status, "os.check": os_check, "os.upgrade": os_upgrade, "os.status": os_status, "os.config": os_config}
 
     def dispatch(self, method, args):

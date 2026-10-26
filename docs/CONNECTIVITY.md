@@ -7,6 +7,8 @@ hardware/drivers. Everything shown comes from NetworkManager, BlueZ, sysfs, udev
 > tree and a scripted daemon in the browser tests. **None of it has been run against real Wi-Fi, Bluetooth or USB hardware yet.**
 > The list of hardware tests that are still open is at the end of this file.
 
+> **Image build:** run 40325784778 (2026-10-26) built the image and passed 112 automated image checks (incl. NetworkManager/BlueZ/firmware, `pios-connd` unit limits, software-cursor setting). The emulated boot test still does not work on the CI runner, so this does not prove that the Pi 5 boots.
+
 ## Architecture
 
 ```

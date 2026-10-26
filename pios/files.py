@@ -38,7 +38,7 @@ def list_dir(path: str = Query("", max_length=4096), u=Depends(current_user)):
 @router.get("/usage")
 def usage(u=Depends(current_user)):
     du = shutil.disk_usage(config.DATA)
-    return {"used": vfs.tree_size(vfs.user_root(u["id"])), "disk_total": du.total, "disk_free": du.free}
+    return {"used": vfs.used_bytes(u["id"]), "quota": config.USER_QUOTA, "disk_total": du.total, "disk_free": du.free}
 
 
 @router.post("/upload")
@@ -46,6 +46,9 @@ async def upload(path: str = Query("", max_length=4096), file: UploadFile = File
     root = vfs.user_root(u["id"])
     target = vfs.write_stream_target(root, path, file.filename or "")
     vfs.check_space()
+    quota_left = config.USER_QUOTA - vfs.used_bytes(u["id"])
+    if quota_left <= 0:
+        raise HTTPException(507, "Speicherkontingent erreicht")
     size = 0
     try:
         with target.open("xb") as f:
@@ -53,12 +56,15 @@ async def upload(path: str = Query("", max_length=4096), file: UploadFile = File
                 size += len(chunk)
                 if size > config.MAX_UPLOAD:
                     raise HTTPException(413, "Datei überschreitet das Upload-Limit")
+                if size > quota_left:
+                    raise HTTPException(507, "Speicherkontingent erreicht")
                 if size % (64 * 1024 * 1024) < len(chunk):
                     vfs.check_space()
                 f.write(chunk)
     except BaseException:
         target.unlink(missing_ok=True)
         raise
+    vfs.invalidate_usage(u["id"])
     return {"name": target.name, "size": size}
 
 
@@ -83,6 +89,7 @@ def move(b: MoveBody, u=Depends(current_user)):
 @router.delete("")
 def delete(path: str = Query(..., max_length=4096), u=Depends(current_user)):
     vfs.remove(vfs.user_root(u["id"]), path)
+    vfs.invalidate_usage(u["id"])
     return {"ok": True}
 
 

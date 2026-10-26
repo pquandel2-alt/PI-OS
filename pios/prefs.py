@@ -21,9 +21,10 @@ class Prefs(BaseModel):
     restore_apps: bool = True
 
 
-def _get(uid, table, extra="", args=()):
+def _get(uid, table, args=()):
+    sql = {"prefs": "SELECT data FROM prefs WHERE uid=?", "desktop": "SELECT data FROM desktop WHERE uid=? AND kind=?"}[table]
     with db.connect() as c:
-        r = c.execute(f"SELECT data FROM {table} WHERE uid=? {extra}", (uid, *args)).fetchone()
+        r = c.execute(sql, (uid, *args)).fetchone()
     return json.loads(r["data"]) if r else None
 
 
@@ -43,7 +44,7 @@ def set_prefs(p: Prefs, u=Depends(current_user)):
 @router.get("/desktop")
 def get_desktop(u=Depends(current_user)):
     # Local (HDMI) and remote (browser) sessions keep independent layouts.
-    return _get(u["id"], "desktop", "AND kind=?", (u["kind"],)) or {"windows": {}, "open": []}
+    return _get(u["id"], "desktop", (u["kind"],)) or {"windows": {}, "open": []}
 
 
 @router.put("/desktop")

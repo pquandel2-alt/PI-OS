@@ -95,17 +95,33 @@ def create_session(uid: int, request: Request) -> str:
     return token
 
 
+_ALIVE = ("s.expires>? AND ((s.kind='local' AND s.last_seen>?) OR (s.kind<>'local' AND s.last_seen>?))")
+
+
+def _alive_args(now: int):
+    return (now, now - config.IDLE_LOCAL, now - config.IDLE_REMOTE)
+
+
 def _session_row(request: Request):
     token = request.cookies.get(COOKIE, "")
-    if not token:
+    if not token or len(token) > 200:
         return None
     now = int(time.time())
     with connect() as c:
-        r = c.execute("SELECT u.id,u.username,u.role,s.hash,s.kind FROM sessions s JOIN users u ON u.id=s.uid "
-                      "WHERE s.hash=? AND s.expires>?", (token_hash(token), now)).fetchone()
-        if r:
+        r = c.execute("SELECT u.id,u.username,u.role,s.hash,s.kind,s.last_seen FROM sessions s JOIN users u ON u.id=s.uid "
+                      f"WHERE s.hash=? AND {_ALIVE}", (token_hash(token), *_alive_args(now))).fetchone()
+        if r and now - r["last_seen"] > 60:          # sliding idle timeout; at most one write per minute
             c.execute("UPDATE sessions SET last_seen=? WHERE hash=?", (now, r["hash"]))
     return r
+
+
+def session_alive(sid: str, uid: int) -> bool:
+    """True while the (hash-prefix) session of this user is valid. Used to bind capability tokens to their session."""
+    if not sid or len(sid) < 16 or not all(ch in "0123456789abcdef" for ch in sid):
+        return False
+    with connect() as c:
+        return c.execute(f"SELECT 1 FROM sessions s WHERE s.hash LIKE ? AND s.uid=? AND {_ALIVE}",
+                         (sid + "%", uid, *_alive_args(int(time.time())))).fetchone() is not None
 
 
 def current_user(request: Request) -> dict:
@@ -145,8 +161,11 @@ def _secret() -> bytes:
     return p.read_bytes()
 
 
-def issue_app_token(app_id: str, uid: int, perms: list[str], ttl: int = 3600) -> str:
-    body = urlsafe_b64encode(json.dumps({"a": app_id, "u": uid, "p": perms, "e": int(time.time()) + ttl},
+def issue_app_token(app_id: str, uid: int, perms: list[str], sid: str = "", ttl: int = 3600) -> str:
+    """Capability token: bound to the user session that requested it (`s`). The server re-checks session, app registration
+    and the *current* grants on every call, so logout, session revocation, password change, uninstall and revoking a
+    permission take effect immediately - the token itself only carries a claim."""
+    body = urlsafe_b64encode(json.dumps({"a": app_id, "u": uid, "p": perms, "s": sid, "e": int(time.time()) + ttl},
                                         separators=(",", ":")).encode()).decode().rstrip("=")
     sig = hmac.new(_secret(), body.encode(), hashlib.sha256).hexdigest()
     return f"{body}.{sig}"
@@ -163,4 +182,4 @@ def read_app_token(request: Request) -> dict:
         raise HTTPException(401, "Ungültiges App-Token") from None
     if not good or d["e"] < time.time():
         raise HTTPException(401, "Ungültiges App-Token")
-    return {"app": d["a"], "uid": d["u"], "perms": set(d["p"])}
+    return {"app": d["a"], "uid": d["u"], "perms": set(d["p"]), "sid": d.get("s", "")}

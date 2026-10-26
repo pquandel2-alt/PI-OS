@@ -37,9 +37,9 @@ def test_permissions_enforced_server_side(admin):
 
 
 def test_app_file_scope(admin, tmp_path):
-    from pios import security, vfs
-    t = security.issue_app_token("demo", 1, ["files.app"])
-    h = {"Authorization": "Bearer " + t}
+    from pios import vfs
+    from tests.conftest import register_app
+    h = register_app(admin, "demo", ["files.app"])
     assert admin.put("/api/sdk/files/content", params={"path": "a.txt"}, content=b"data", headers=h).status_code == 200
     assert admin.get("/api/sdk/files/content", params={"path": "a.txt"}, headers=h).content == b"data"
     assert admin.get("/api/sdk/files/content", params={"path": "../../x"}, headers=h).status_code in (400, 404)
@@ -49,9 +49,8 @@ def test_app_file_scope(admin, tmp_path):
 
 
 def test_storage_isolated_per_app(admin):
-    from pios import security
-    a = {"Authorization": "Bearer " + security.issue_app_token("app-a", 1, ["storage"])}
-    b = {"Authorization": "Bearer " + security.issue_app_token("app-b", 1, ["storage"])}
+    from tests.conftest import register_app
+    a = register_app(admin, "app-a", ["storage"]); b = register_app(admin, "app-b", ["storage"])
     admin.put("/api/sdk/storage/k", json={"value": 1}, headers=a)
     assert admin.get("/api/sdk/storage/k", headers=b).json() == {"value": None}
 
@@ -64,8 +63,7 @@ def test_storage_quota(admin):
 
 
 def test_notifications_reach_event_log(admin):
-    from pios import security
-    h = {"Authorization": "Bearer " + security.issue_app_token("hello", 1, ["notifications"])}
+    h = _tok = tok(admin, "hello")
     assert admin.post("/api/sdk/notifications", json={"title": "Hi"}, headers=h).status_code == 200
     ev = admin.get("/api/events").json()["events"]
     assert ev[-1]["title"] == "Hi" and ev[-1]["app"] == "hello"
@@ -96,8 +94,7 @@ def test_bad_manifests_are_skipped(tmp_path):
 
 
 def test_sdk_needs_no_csrf_header_but_cookie_api_does(admin):
-    from pios import security
-    h = {"Authorization": "Bearer " + security.issue_app_token("hello", 1, ["storage"]), "X-PiOS": ""}
+    h = {**tok(admin, "hello"), "X-PiOS": ""}
     assert admin.put("/api/sdk/storage/k", json={"value": 1}, headers=h).status_code == 200
     # a cookie alone is not accepted by the SDK API
     assert admin.put("/api/sdk/storage/k", json={"value": 1}, headers={"X-PiOS": ""}).status_code == 401

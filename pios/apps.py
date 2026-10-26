@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from . import API_VERSION, config, db, events, security, system, vfs
+import time
+
+from . import API_VERSION, audit, config, db, events, security, system, vfs
 from .security import current_user, read_app_token
 
 router = APIRouter()
@@ -123,10 +125,70 @@ registry = Registry(config.APPS_DIR)
 
 
 # ---- registry API -------------------------------------------------------------
+# ---- installed-app state and permission grants (technically enforced on every SDK call) ----------------------
+def sync_app_state():
+    """Reconcile the registry with app_state/app_grants. Bundled apps get the permissions they request when first seen
+    (recorded as granted_by='system:bundled'); permissions added by a later version are NOT granted automatically;
+    removed apps lose all grants (their tokens stop working at once)."""
+    now = int(time.time())
+    sandboxed = {m.id: m for m in registry.apps.values() if m.kind == "sandboxed"}
+    with db.tx() as c:
+        known = {r["app"]: r for r in c.execute("SELECT * FROM app_state")}
+        for app_id, m in sandboxed.items():
+            if app_id not in known:
+                c.execute("INSERT INTO app_state VALUES(?,?,?,?,?,?)", (app_id, "bundled", m.version, json.dumps(m.permissions), now, now))
+                for p in m.permissions:
+                    c.execute("INSERT OR IGNORE INTO app_grants VALUES(?,?,?,?)", (app_id, p, "system:bundled", now))
+            else:
+                old = known[app_id]
+                before = set(json.loads(old["requested"]))
+                if old["version"] != m.version or before != set(m.permissions):
+                    c.execute("UPDATE app_state SET version=?, requested=?, updated=? WHERE app=?", (m.version, json.dumps(m.permissions), now, app_id))
+                    for p in before - set(m.permissions):          # no longer requested -> grant removed
+                        c.execute("DELETE FROM app_grants WHERE app=? AND perm=?", (app_id, p))
+        for app_id in set(known) - set(sandboxed):                 # uninstalled
+            c.execute("DELETE FROM app_grants WHERE app=?", (app_id,))
+            c.execute("DELETE FROM app_state WHERE app=?", (app_id,))
+            audit.event("app.removed", "notice", app=app_id)
+
+
+def granted(app_id: str) -> set[str]:
+    with db.connect() as c:
+        return {r["perm"] for r in c.execute("SELECT perm FROM app_grants WHERE app=?", (app_id,))}
+
+
+def effective_perms(app_id: str) -> set[str]:
+    m = registry.apps.get(app_id)
+    return set(m.permissions) & granted(app_id) if m and m.kind == "sandboxed" else set()
+
+
+def app_overview() -> list[dict]:
+    """Per-app view for NOVA Shield: requested vs granted permissions, origin, last update."""
+    out = []
+    with db.connect() as c:
+        state = {r["app"]: r for r in c.execute("SELECT * FROM app_state")}
+        grants = {}
+        for r in c.execute("SELECT * FROM app_grants"):
+            grants.setdefault(r["app"], {})[r["perm"]] = {"by": r["granted_by"], "time": r["time"]}
+    for m in registry.apps.values():
+        st = state.get(m.id)
+        g = grants.get(m.id, {})
+        requested = list(m.permissions)
+        out.append({"id": m.id, "name": m.name, "version": m.version, "kind": m.kind, "origin": st["origin"] if st else "system",
+                    "requested": requested, "granted": sorted(p for p in requested if p in g), "pending": sorted(p for p in requested if p not in g and m.kind == "sandboxed"),
+                    "grants": g, "updated": st["updated"] if st else None, "description": m.description,
+                    "isolation": "iframe-sandbox (opaque origin, CSP connect-src none)" if m.kind == "sandboxed" else "trusted system module"})
+    return out
+
+
 @router.get("/api/apps")
 def list_apps(u=Depends(current_user)):
-    return {"api": API_VERSION, "apps": [m.model_dump() for m in registry.apps.values()],
-            "permissions": PERMISSIONS, "errors": registry.errors}
+    apps_out = []
+    for m in registry.apps.values():
+        d = m.model_dump()
+        d["granted"] = sorted(effective_perms(m.id)) if m.kind == "sandboxed" else list(m.permissions)
+        apps_out.append(d)
+    return {"api": API_VERSION, "apps": apps_out, "permissions": PERMISSIONS, "errors": registry.errors}
 
 
 @router.post("/api/apps/{app_id}/token")
@@ -134,8 +196,8 @@ def app_token(app_id: str, u=Depends(current_user)):
     m = registry.apps.get(app_id)
     if not m or m.kind != "sandboxed":
         raise HTTPException(404, "App nicht gefunden")
-    return {"token": security.issue_app_token(m.id, u["id"], m.permissions), "ttl": 3600,
-            "permissions": m.permissions}
+    perms = sorted(effective_perms(m.id))
+    return {"token": security.issue_app_token(m.id, u["id"], perms, sid=u["session"][:32]), "ttl": 3600, "permissions": perms}
 
 
 # Sandboxed app assets are public static code: the iframe has an opaque origin and sends no cookies.
@@ -156,13 +218,34 @@ def app_asset(app_id: str, path: str = ""):
 
 
 # ---- SDK API (capability token auth, no cookies) ---------------------------------
+_denied_seen: dict[tuple, float] = {}
+
+
+def _audit_denied(tok, what: str):
+    key = (tok["app"], what)
+    if time.monotonic() - _denied_seen.get(key, 0) > 60:      # one audit line per app+permission per minute
+        _denied_seen[key] = time.monotonic()
+        audit.event("app.denied", "warning", actor=f"app:{tok['app']}", permission=what)
+
+
+def app_principal(tok=Depends(read_app_token)):
+    """Validate a capability token against *current* server state: registered app, live user session, current grants."""
+    m = registry.apps.get(tok["app"])
+    if not m or m.kind != "sandboxed":
+        raise HTTPException(401, "App ist nicht (mehr) installiert")
+    if not security.session_alive(tok["sid"], tok["uid"]):
+        raise HTTPException(401, "Sitzung beendet")
+    return {**tok, "perms": tok["perms"] & effective_perms(tok["app"])}
+
+
 def need(perm_options: str):
     """Dependency factory: token must hold at least one of the listed permissions."""
     wanted = perm_options.split("|")
 
-    def dep(tok=Depends(read_app_token)):
+    def dep(tok=Depends(app_principal)):
         held = [p for p in wanted if p in tok["perms"]]
         if not held:
+            _audit_denied(tok, wanted[0])
             raise HTTPException(403, f"Berechtigung fehlt: {wanted[0]}")
         return {**tok, "held": held}
     return dep
@@ -215,17 +298,18 @@ def _file_scope(t, path: str, write: bool):
         scope = root / "Apps" / t["app"]
         scope.mkdir(parents=True, exist_ok=True)
         return scope, path
+    _audit_denied(t, "files.write" if write else "files.read")
     raise HTTPException(403, "Berechtigung fehlt: " + ("files.write" if write else "files.read"))
 
 
 @sdk.get("/files")
-def sdk_list(path: str = Query("", max_length=4096), t=Depends(read_app_token)):
+def sdk_list(path: str = Query("", max_length=4096), t=Depends(app_principal)):
     root, rel = _file_scope(t, path, False)
     return vfs.listing(root, rel)
 
 
 @sdk.get("/files/content")
-def sdk_read(path: str = Query(..., max_length=4096), t=Depends(read_app_token)):
+def sdk_read(path: str = Query(..., max_length=4096), t=Depends(app_principal)):
     root, rel = _file_scope(t, path, False)
     p = vfs.resolve(root, rel)
     if not p.is_file():
@@ -237,7 +321,7 @@ def sdk_read(path: str = Query(..., max_length=4096), t=Depends(read_app_token))
 
 
 @sdk.put("/files/content")
-async def sdk_write(request: Request, path: str = Query(..., max_length=4096), t=Depends(read_app_token)):
+async def sdk_write(request: Request, path: str = Query(..., max_length=4096), t=Depends(app_principal)):
     root, rel = _file_scope(t, path, True)
     data = await request.body()
     if len(data) > FILE_MAX:

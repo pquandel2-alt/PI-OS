@@ -137,7 +137,7 @@ class Updater:
             "available": avail, "snoozed_until": snooze if snooze > now else 0,
             "last_check": cache.get("checked_at"), "last_success": cache.get("success_at"), "last_error": cache.get("error"),
             "retry_at": cache.get("retry_at"), "job": job, "history": self.store.history()[:20],
-            "failed_versions": cfg.get("failed", {}), "busy": self._mutex.locked(),
+            "failed_versions": cfg.get("failed", {}), "busy": self._mutex.locked(), "rejected": cache.get("rejected", {}),
         }
 
     def set_config(self, channel=None, auto_check=None):

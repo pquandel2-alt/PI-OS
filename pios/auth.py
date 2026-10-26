@@ -8,7 +8,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import config, db, security
+from . import audit, config, db, security
 from .security import admin_user, current_user
 
 router = APIRouter(prefix="/api")
@@ -87,6 +87,7 @@ def setup(body: Setup, request: Request):
     security.check_lock(request, "setup")
     if not _code_ok(request, body.setup_code):
         security.register_failure(request, "setup")
+        audit.event("auth.setup_code_rejected", "warning", ip=security.client_ip(request))
         raise HTTPException(403, "Setup-Code ungültig. Du findest ihn auf dem HDMI-Bildschirm oder in der Datei "
                                  "PIOS-SETUP.txt auf der Boot-Partition der SD-Karte.")
     with db.tx() as c:
@@ -96,19 +97,27 @@ def setup(body: Setup, request: Request):
                   (body.username, security.hasher.hash(body.password), int(time.time())))
     _code_path().unlink(missing_ok=True)
     _done_path().write_text("1\n")
+    audit.event("auth.setup_complete", "notice", actor=body.username, ip=security.client_ip(request), local=security.is_loopback(request))
     return {"ok": True}
 
 
 # ---- login / logout -----------------------------------------------------------
 @router.post("/login")
 def login(body: Credentials, request: Request, response: Response):
-    security.check_lock(request, body.username)
+    try:
+        security.check_lock(request, body.username)
+    except HTTPException:
+        audit.event("auth.locked_out", "warning", actor=body.username, ip=security.client_ip(request))
+        raise
     with db.connect() as c:
         r = c.execute("SELECT * FROM users WHERE username=?", (body.username,)).fetchone()
     if not security.verify_password(r["password"] if r else None, body.password):
         security.register_failure(request, body.username)
+        audit.event("auth.login_failed", "warning", actor=body.username, ip=security.client_ip(request))
         raise HTTPException(401, "Anmeldung fehlgeschlagen")
     security.clear_failures(request, body.username)
+    audit.event("auth.login", "notice" if r["role"] == "admin" else "info", actor=r["username"], ip=security.client_ip(request),
+                role=r["role"], client=security.client_kind(request))
     if security.hasher.check_needs_rehash(r["password"]):
         with db.connect() as c:
             c.execute("UPDATE users SET password=? WHERE id=?", (security.hasher.hash(body.password), r["id"]))
@@ -139,10 +148,12 @@ def change_password(body: PasswordChange, request: Request, u=Depends(current_us
         r = c.execute("SELECT password FROM users WHERE id=?", (u["id"],)).fetchone()
     if not security.verify_password(r["password"], body.current):
         security.register_failure(request, u["username"])
+        audit.event("auth.password_change_failed", "warning", actor=u["username"], ip=security.client_ip(request))
         raise HTTPException(403, "Aktuelles Passwort ist falsch")
     with db.tx() as c:
         c.execute("UPDATE users SET password=? WHERE id=?", (security.hasher.hash(body.new), u["id"]))
         c.execute("DELETE FROM sessions WHERE uid=? AND hash<>?", (u["id"], u["session"]))
+    audit.event("auth.password_changed", "notice", actor=u["username"], ip=security.client_ip(request))
     return {"ok": True}
 
 
@@ -156,11 +167,12 @@ def list_sessions(u=Depends(current_user)):
 
 
 @router.delete("/sessions/{sid}")
-def revoke_session(sid: str, u=Depends(current_user)):
+def revoke_session(sid: str, request: Request, u=Depends(current_user)):
     if not re.fullmatch(r"[0-9a-f]{16}", sid):
         raise HTTPException(400, "Ungültige Sitzung")
     with db.connect() as c:
         c.execute("DELETE FROM sessions WHERE uid=? AND hash LIKE ?", (u["id"], sid + "%"))
+    audit.event("auth.session_revoked", "notice", actor=u["username"], ip=security.client_ip(request))
     return {"ok": True}
 
 
@@ -172,21 +184,23 @@ def list_users(u=Depends(admin_user)):
 
 
 @router.post("/users")
-def create_user(body: NewUser, u=Depends(admin_user)):
+def create_user(body: NewUser, request: Request, u=Depends(admin_user)):
     with db.tx() as c:
         if c.execute("SELECT 1 FROM users WHERE username=?", (body.username,)).fetchone():
             raise HTTPException(409, "Benutzername bereits vergeben")
         cur = c.execute("INSERT INTO users(username,password,role,created) VALUES(?,?,?,?)",
                         (body.username, security.hasher.hash(body.password), body.role, int(time.time())))
+    audit.event("user.created", "notice", actor=u["username"], ip=security.client_ip(request), user=body.username, role=body.role)
     return {"id": cur.lastrowid}
 
 
 @router.delete("/users/{uid}")
-def delete_user(uid: int, u=Depends(admin_user)):
+def delete_user(uid: int, request: Request, u=Depends(admin_user)):
     if uid == u["id"]:
         raise HTTPException(400, "Das eigene Konto kann nicht gelöscht werden")
     with db.tx() as c:
         if not c.execute("DELETE FROM users WHERE id=?", (uid,)).rowcount:
             raise HTTPException(404, "Benutzer nicht gefunden")
     shutil.rmtree(config.DATA / "files" / str(uid), ignore_errors=True)
+    audit.event("user.deleted", "notice", actor=u["username"], ip=security.client_ip(request), user_id=uid)
     return {"ok": True}

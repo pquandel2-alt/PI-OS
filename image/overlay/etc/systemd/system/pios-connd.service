@@ -1,0 +1,45 @@
+[Unit]
+Description=PiOS connectivity helper (Wi-Fi/Bluetooth/hardware management over NetworkManager and BlueZ D-Bus)
+After=local-fs.target dbus.service NetworkManager.service bluetooth.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+Group=pios
+Environment=PYTHONPATH=/usr/lib/pios-connd-lib PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m pios_connd.server
+Restart=always
+RestartSec=3
+RuntimeDirectory=pios-connd
+RuntimeDirectoryMode=0755
+StateDirectory=pios-connd
+StateDirectoryMode=0700
+UMask=0077
+
+# Only the privileges the verbs need: nl80211 regulatory domain (iw reg set) and reading the compositor's open input devices in /proc
+# for the mouse diagnosis. Everything else goes through the NetworkManager and BlueZ D-Bus APIs, which authorise root themselves.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/modprobe.d
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=no
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

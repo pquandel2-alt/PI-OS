@@ -162,6 +162,16 @@ def test_first_run_enables_wifi_exactly_once(d, tmp_path):
     assert d.first_run() is False and d.verbs["net.status"]({})["wifi"]["enabled"] is False, "later runs respect the user's choice"
 
 
+def test_security_facts_for_shield_report_real_findings(d):
+    setup_wifi(d)
+    d.r.cmds[("iw", "reg", "get")] = (0, "global\ncountry 00: DFS-UNSET\n")
+    sec = d.verbs["net.security"]({})
+    assert sec["nm"] is True and sec["bluez"] is False
+    assert [f["id"] for f in sec["findings"]] == ["wifi_country"]
+    d.r.cmds[("iw", "reg", "get")] = (0, "global\ncountry DE: DFS-ETSI\n")
+    assert d.verbs["net.security"]({})["findings"] == []
+
+
 def test_bluetooth_verbs_report_missing_bluez(d):
     with pytest.raises(OpError) as e:
         d.verbs["bt.status"]({})

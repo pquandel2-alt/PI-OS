@@ -18,7 +18,7 @@ jobs:
       - run: pip install -r requirements.txt pip-audit bandit
       - run: pip-audit -r requirements.txt
       - name: bandit (fail on high severity)
-        run: bandit -q -r pios pios_updater pios_firewall pios_sysops scripts -lll
+        run: bandit -q -r pios pios_updater pios_firewall pios_sysops pios_connd scripts -lll
       - name: No secrets or private keys in the tree
         run: |
           ! git grep -n -I -E 'BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}' -- . ':!tests' ':!docs'

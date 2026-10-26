@@ -17,15 +17,16 @@ printf '{"channel": "%s", "auto_check": true}\n' "${PIOS_CHANNEL}" > "${ROOTFS_D
 chmod 600 "${ROOTFS_DIR}/var/lib/pios-updater/config.json"
 
 # Privileged helpers (root daemons) and their code live outside the OTA-updatable tree, in /usr/lib.
-install -d -m 755 "${ROOTFS_DIR}/usr/lib/pios-firewall" "${ROOTFS_DIR}/usr/lib/pios-sysops-lib"
+install -d -m 755 "${ROOTFS_DIR}/usr/lib/pios-firewall" "${ROOTFS_DIR}/usr/lib/pios-sysops-lib" "${ROOTFS_DIR}/usr/lib/pios-connd-lib"
 cp -a files/pios_firewall "${ROOTFS_DIR}/usr/lib/pios-firewall/"
 cp -a files/pios_sysops "${ROOTFS_DIR}/usr/lib/pios-sysops-lib/"
+cp -a files/pios_connd "${ROOTFS_DIR}/usr/lib/pios-connd-lib/"
 
 cp -a files/etc/. "${ROOTFS_DIR}/etc/"
 cp -a files/usr/. "${ROOTFS_DIR}/usr/"
 install -m 644 files/pios-release "${ROOTFS_DIR}/etc/pios-release"
-chown -R 0:0 "${ROOTFS_DIR}/opt/pios" "${ROOTFS_DIR}/usr/lib/pios-firewall" "${ROOTFS_DIR}/usr/lib/pios-sysops-lib" "${ROOTFS_DIR}/usr/lib/pios-updater" "${ROOTFS_DIR}/usr/share/pios" "${ROOTFS_DIR}/etc/pios" "${ROOTFS_DIR}/etc/pios-release"
-for d in usr/lib/pios-updater usr/lib/pios-firewall usr/lib/pios-sysops-lib usr/share/pios etc/chromium/policies etc/clamav; do
+chown -R 0:0 "${ROOTFS_DIR}/opt/pios" "${ROOTFS_DIR}/usr/lib/pios-firewall" "${ROOTFS_DIR}/usr/lib/pios-sysops-lib" "${ROOTFS_DIR}/usr/lib/pios-connd-lib" "${ROOTFS_DIR}/usr/lib/pios-updater" "${ROOTFS_DIR}/usr/share/pios" "${ROOTFS_DIR}/etc/pios" "${ROOTFS_DIR}/etc/pios-release"
+for d in usr/lib/pios-updater usr/lib/pios-firewall usr/lib/pios-sysops-lib usr/lib/pios-connd-lib usr/share/pios etc/chromium/policies etc/clamav; do
 	[ -d "${ROOTFS_DIR}/$d" ] || continue
 	find "${ROOTFS_DIR}/$d" -type d -exec chmod 755 {} +
 	find "${ROOTFS_DIR}/$d" -type f -exec chmod 644 {} +
@@ -50,11 +51,14 @@ rm -f /etc/clamav/pios-clamd.conf
 usermod -aG clamav pios || true
 
 # Pre-compile the Python code (the service cannot write to /opt/pios at runtime).
-python3 -m compileall -q /opt/pios/current/pios /usr/lib/pios-updater /usr/lib/pios-firewall /usr/lib/pios-sysops-lib
+python3 -m compileall -q /opt/pios/current/pios /usr/lib/pios-updater /usr/lib/pios-firewall /usr/lib/pios-sysops-lib /usr/lib/pios-connd-lib
 
 # Autostart: backend, setup-code notice, and the HDMI display watcher. The kiosk itself is started by the watcher.
-systemctl enable pios.service pios-updater.service pios-firewall.service pios-sysops.service pios-setup-notice.service pios-setup-notice.path pios-display.service \
+systemctl enable pios.service pios-updater.service pios-firewall.service pios-sysops.service pios-connd.service pios-setup-notice.service pios-setup-notice.path pios-display.service \
 	pios-clam-update.timer pios-os-check.timer pios-os-upgrade.timer
+# Network and Bluetooth stacks (Pi OS Bookworm/Trixie use NetworkManager + wpa_supplicant + BlueZ); managed by pios-connd over D-Bus.
+systemctl enable NetworkManager.service bluetooth.service
+systemctl disable systemd-networkd.service dhcpcd.service 2>/dev/null || true
 # never started by default: clamd runs on demand; the stock freshclam daemon and nftables.service (which flushes the ruleset) stay off
 # SSH stays off unless Raspberry Pi Imager's customisation enables it: ssh.socket (socket activation) must not keep port 22 reachable
 systemctl disable ssh.socket ssh.service 2>/dev/null || true

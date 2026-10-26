@@ -13,7 +13,7 @@ OTA_OK = {"installed": {"version": "0.2.0"}, "available": None, "last_success": 
 @pytest.fixture()
 def shield(admin, monkeypatch, tmp_path):
     from pios import firewall, malware, shield as sh, sysops, updates
-    state = {"fw": dict(FW_OK), "os": dict(OS_OK), "ota": dict(OTA_OK)}
+    state = {"fw": dict(FW_OK), "os": dict(OS_OK), "ota": dict(OTA_OK), "net": {"nm": True, "bluez": True, "findings": [], "pending": None}}
 
     def fw_call(method, args=None, timeout=0):
         if state["fw"] is None:
@@ -27,6 +27,11 @@ def shield(admin, monkeypatch, tmp_path):
         if state["ota"] is None:
             raise updates.Unavailable("down")
         return state["ota"]
+    def net_call(method, args=None, timeout=0):
+        if state["net"] is None:
+            raise OSError("down")
+        return state["net"]
+    monkeypatch.setattr("pios.connectivity.call", net_call)
     monkeypatch.setattr(firewall, "call", fw_call); monkeypatch.setattr(sysops, "call", sys_call); monkeypatch.setattr(updates, "call", ota_call)
     monkeypatch.setattr(sh, "check_hardening", lambda: sh.chk("service", "Dienst-Härtung", "ok", "ok"))
     # healthy scanner: signatures present and fresh, a finished scan, ClamAV "installed"
@@ -74,6 +79,12 @@ def test_open_ssh_and_pending_confirmation_are_visible(shield):
     assert j["status"] == "limited" and "SSH" in check(j, "firewall")["detail"]
     shield.state["fw"] = {**FW_OK, "pending": {"seconds_left": 42, "config": {}}}
     assert check(status(shield), "firewall")["level"] == "attention"
+
+
+def test_unreachable_connectivity_helper_is_never_reported_as_protected(shield):
+    shield.state["net"] = None
+    j = status(shield)
+    assert j["status"] == "unknown" and check(j, "connectivity")["level"] == "unknown"
 
 
 def test_pending_security_updates_need_attention(shield):

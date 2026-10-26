@@ -450,6 +450,25 @@ def check_browser():
     return chk("browser", "Browser-Härtung (HDMI-Kiosk)", "ok", "Chromium-Sandbox aktiv, nur PiOS erlaubt, DevTools/Downloads gesperrt, kein Remote-Debugging.")
 
 
+def check_connectivity():
+    try:
+        from . import connectivity
+        sec = connectivity.call("net.security", timeout=8)
+    except Exception:                                                   # noqa: BLE001 - unreachable helper = not verified, never "protected"
+        return chk("connectivity", "WLAN, Bluetooth & Eingabegeräte", "unknown", "Der Verbindungsdienst (pios-connd) antwortet nicht. WLAN- und Bluetooth-Konfiguration konnten nicht geprüft werden.")
+    if not sec["nm"] and not sec["bluez"]:
+        return chk("connectivity", "WLAN, Bluetooth & Eingabegeräte", "unknown", "Weder NetworkManager noch BlueZ laufen; es kann nichts geprüft werden.", data=sec)
+    finds = sec["findings"]
+    missing = [n for n, up in (("NetworkManager", sec["nm"]), ("BlueZ", sec["bluez"])) if not up]
+    level = max((f["level"] for f in finds), key=lambda l: SEVERITY[l], default="ok")
+    if missing and SEVERITY[level] < SEVERITY["limited"]:
+        level = "limited"
+    text = " ".join(f["text"] for f in finds) or "Kein auffälliger Befund: kein dauerhaft sichtbares Bluetooth, kein automatisches offenes WLAN, WLAN-Land gesetzt."
+    if missing:
+        text += " Nicht aktiv: " + ", ".join(missing) + "."
+    return chk("connectivity", "WLAN, Bluetooth & Eingabegeräte", level, text, data=sec)
+
+
 def check_transport(request: Request):
     https = request.url.scheme == "https"
     return chk("transport", "Verbindung", "info", "Verschlüsselt (HTTPS)." if https else "Unverschlüsselt (HTTP im Heimnetz). Nicht über das Internet freigeben; für Fernzugriff ein VPN verwenden.")
@@ -458,7 +477,7 @@ def check_transport(request: Request):
 
 @router.get("")
 def overview(request: Request, u=Depends(admin_user)):
-    checks = [check_firewall(), check_malware(), check_sandbox(), check_hardening(), check_ota(), check_os(), check_access(), check_audit(), check_browser(), check_transport(request)]
+    checks = [check_firewall(), check_malware(), check_sandbox(), check_hardening(), check_ota(), check_os(), check_access(), check_audit(), check_browser(), check_connectivity(), check_transport(request)]
     worst = max(SEVERITY[c["level"]] for c in checks)
     key, label = VERDICT[worst]
     problems = [c for c in checks if SEVERITY[c["level"]] > 0]

@@ -54,7 +54,7 @@ class Connd:
             "bt.pair": lambda a: self._bt().pair(a.get("address")), "bt.answer": self.bt_answer, "bt.cancel": lambda a: self._bt().cancel_pairing(a.get("session")),
             "bt.connect": lambda a: self._bt().connect(a.get("address")), "bt.disconnect": lambda a: self._bt().disconnect(a.get("address")),
             "bt.trust": lambda a: self._bt().set_trusted(a.get("address"), a.get("trusted")) or {"ok": True}, "bt.remove": lambda a: self._bt().remove(a.get("address")) or {"ok": True},
-            "hw.inventory": self.hw_inventory, "hw.input_diag": self.hw_input_diag, "hw.drivers": self.hw_drivers, "hw.rescan": self.hw_rescan,
+            "net.security": self.net_security, "hw.inventory": self.hw_inventory, "hw.input_diag": self.hw_input_diag, "hw.drivers": self.hw_drivers, "hw.rescan": self.hw_rescan,
         }
 
     # ------------------------------------------------------------------------------------ plumbing
@@ -103,6 +103,29 @@ class Connd:
             return {"present": bool(ads), "powered": any(x["powered"] for x in ads), "connected": [d["name"] for d in self.bt.devices() if d["connected"]][:5]}
         except dbus.DBusException:
             return {"present": False}
+
+    def net_security(self, a):
+        """Facts for the NOVA Shield connectivity check. Each finding is a real observation; what could not be read is reported as such."""
+        out = {"nm": self.nm.running(), "bluez": bool(self.bt is not None and self.bt.running()), "findings": [], "pending": self.guard.pending()}
+        f = out["findings"]
+        if out["nm"]:
+            st = self.nm.status()
+            if st["wifi"]["present"]:
+                out["country"] = self.country()
+                if not out["country"] or out["country"] == "00":
+                    f.append({"id": "wifi_country", "level": "limited", "text": "Kein WLAN-Land (Regulierungsdomäne) gesetzt: Kanäle und Sendeleistung sind nicht an die lokale Regulierung angepasst."})
+            open_auto = [c["ssid"] for c in st["known"] if not c["secured"] and c.get("autoconnect")]
+            if open_auto:
+                f.append({"id": "open_wifi_autoconnect", "level": "attention", "text": "Automatische Verbindung zu unverschlüsseltem WLAN gespeichert: " + ", ".join(open_auto[:3])})
+        if out["bluez"]:
+            for ad in self.bt.adapters():
+                if ad["discoverable"]:
+                    f.append({"id": "bt_discoverable", "level": "attention", "text": f"Bluetooth-Adapter {ad['address']} ist dauerhaft sichtbar (Discoverable)."})
+                if ad["pairable"] and not any(x["state"] in ("pairing", "awaiting_user") for x in self.bt.pairing_state()["sessions"]):
+                    f.append({"id": "bt_pairable", "level": "attention", "text": "Bluetooth nimmt Kopplungsanfragen an, ohne dass eine Kopplung gestartet wurde."})
+        if out["pending"]:
+            f.append({"id": "net_pending", "level": "attention", "text": f"Eine Netzwerkänderung wartet auf Bestätigung ({out['pending']['seconds_left']} s)."})
+        return out
 
     def net_operation(self, a):
         op = str(a.get("op", ""))

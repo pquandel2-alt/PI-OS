@@ -56,6 +56,8 @@ python3 -m compileall -q /opt/pios/current/pios /usr/lib/pios-updater /usr/lib/p
 systemctl enable pios.service pios-updater.service pios-firewall.service pios-sysops.service pios-setup-notice.service pios-setup-notice.path pios-display.service \
 	pios-clam-update.timer pios-os-check.timer pios-os-upgrade.timer
 # never started by default: clamd runs on demand; the stock freshclam daemon and nftables.service (which flushes the ruleset) stay off
+# SSH stays off unless Raspberry Pi Imager's customisation enables it: ssh.socket (socket activation) must not keep port 22 reachable
+systemctl disable ssh.socket ssh.service 2>/dev/null || true
 systemctl disable clamav-daemon.service clamav-freshclam.service nftables.service apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 systemctl mask clamav-daemon.socket
 sysctl -p /etc/sysctl.d/90-pios-hardening.conf >/dev/null 2>&1 || true

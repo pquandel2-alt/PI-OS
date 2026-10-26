@@ -19,7 +19,7 @@ def test_setup_requires_code_remotely(client, code):
 def test_setup_without_code_from_loopback(tmp_path, monkeypatch):
     import importlib, sys
     monkeypatch.setenv("PIOS_DATA", str(tmp_path / "d"))
-    for m in [m for m in sys.modules if m.startswith("pios")]:
+    for m in [m for m in sys.modules if m == "pios" or m.startswith("pios.")]:
         del sys.modules[m]
     from fastapi.testclient import TestClient
     main = importlib.import_module("pios.main")

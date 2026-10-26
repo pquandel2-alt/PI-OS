@@ -1,6 +1,6 @@
 [Unit]
 Description=PiOS NOVA backend (web desktop on port 80)
-Documentation=file:///opt/pios/README.md
+Documentation=file:///opt/pios/current/README.md
 After=network.target
 Wants=network.target
 
@@ -8,8 +8,8 @@ Wants=network.target
 Type=simple
 User=pios
 Group=pios
-WorkingDirectory=/opt/pios
-Environment=PIOS_DATA=/var/lib/pios PIOS_WEB=/opt/pios/web PIOS_APPS=/opt/pios/apps PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/pios/current
+Environment=PIOS_DATA=/var/lib/pios PIOS_WEB=/opt/pios/current/web PIOS_APPS=/opt/pios/current/apps PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 -m uvicorn pios.main:app --host 0.0.0.0 --port 80 --no-server-header --log-level warning
 Restart=always
 RestartSec=3

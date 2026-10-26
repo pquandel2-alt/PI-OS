@@ -1,0 +1,34 @@
+[Unit]
+Description=PiOS Update Manager (signed OTA updates, backup, rollback)
+After=network-online.target pios.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=/usr/lib/pios-updater PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m pios_updater.server
+Restart=always
+RestartSec=5
+# Socket directory is traversable; the socket itself is root:pios 0660 and every caller's uid is checked.
+RuntimeDirectory=pios-updater
+RuntimeDirectoryMode=0755
+StateDirectory=pios-updater
+StateDirectoryMode=0700
+UMask=0077
+
+# Runs as root (it replaces /opt/pios releases and restarts services) but is confined to what it needs.
+# Intentionally NOT reduced further without real-hardware testing (see docs/UPDATES.md).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/pios /var/lib/pios /var/lib/pios-updater /run/pios-updater
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

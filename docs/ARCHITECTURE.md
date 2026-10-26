@@ -20,6 +20,7 @@
 * **Local vs. remote sessions**: the kiosk reaches the backend over loopback. The server marks such sessions `local`;
   window layouts are stored per `(user, kind)`, so the HDMI desktop and a phone browser keep independent layouts while
   sharing the same data and apps.
+* **Update Manager** (`pios_updater/`): separate root service, not part of OTA packages; installs signed releases into `/opt/pios/releases/<v>`, switches `current` atomically, health-checks, rolls back. The backend only talks to it through an admin-only gateway (`pios/updates.py`). See [UPDATES.md](UPDATES.md).
 * **Image** (`image/`, `scripts/`): Raspberry Pi OS Lite (pi-gen, trixie, arm64) + one extra stage that installs Debian
   packages (no pip, no Node on the device), copies `/opt/pios`, creates the service users and enables the units.
 

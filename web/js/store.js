@@ -28,11 +28,13 @@ export async function savePrefs(patch) {
 }
 
 // ---- live system metrics (one poller shared by tray, orb and Monitor) ----
-let timer = null;
+let timer = null, knownVersion = null;
 export const history = { cpu: [], ram: [], temp: [] };
 export async function pollSystem() {
   try {
     state.system = await api.get('system', { quiet: true });
+    if (knownVersion && state.system.version !== knownVersion) bus.emit('version-changed', { from: knownVersion, to: state.system.version });
+    knownVersion = state.system.version;
     for (const [k, v] of [['cpu', state.system.cpu], ['ram', state.system.ram.percent], ['temp', state.system.temp ?? 0]]) {
       history[k].push(v); if (history[k].length > 60) history[k].shift();
     }
@@ -47,7 +49,7 @@ export function startPolling() {
   const loop = () => { if (!document.hidden) pollSystem(); };
   timer = setInterval(loop, 2500);
 }
-export function stopPolling() { clearInterval(timer); timer = null; }
+export function stopPolling() { clearInterval(timer); timer = null; knownVersion = null; }
 
 // ---- events / notifications ----
 let since = 0, evTimer = null;

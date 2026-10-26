@@ -10,3 +10,5 @@ libpam-systemd
 fonts-inter
 fonts-dejavu-core
 curl
+python3-cryptography
+zstd

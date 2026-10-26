@@ -125,3 +125,5 @@
 .desktop.mobile .win-frame { border-radius: 0; border-width: 0; }
 .desktop.mobile .win-titlebar { cursor: default; border-radius: 0; }
 .desktop.mobile .rz, .desktop.mobile .win-btn.max { display: none; }
+
+.dock-item.has-update::before { content: ""; position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 10px var(--violet); }

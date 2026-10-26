@@ -4,7 +4,7 @@ After=pios.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/pios/bin/pios-setup-notice
+ExecStart=/opt/pios/current/bin/pios-setup-notice
 
 [Install]
 WantedBy=multi-user.target

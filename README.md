@@ -1,6 +1,6 @@
 # PiOS · NOVA
 
-**Private Raspberry Pi 5 web operating system — 0.1.0 (alpha)**
+**Raspberry Pi 5 web operating system — 0.2.0 (alpha, beta channel)**
 
 PiOS NOVA is a self-contained, futuristic desktop that runs as a web service on Raspberry Pi OS (64-bit,
 Debian trixie). Open it in any browser on your network (`http://pios.local`) — or plug in an HDMI monitor, mouse and
@@ -19,10 +19,11 @@ keyboard and the same desktop appears full screen on the device.
 | **NOVA Notes** | SQLite notes with autosave and search |
 | **NOVA Monitor** | Live CPU, RAM, temperature, disk, uptime, network (no reloads) |
 | **NOVA Settings** | Profile, password, sessions, appearance (accent, animations, orb), desktop, users (admin), installed apps, system info |
+| **NOVA Updates** | Signed OTA updates from GitHub Releases with live progress, automatic backup, health check and application rollback, Stable/Beta channels — [docs/UPDATES.md](docs/UPDATES.md) |
 | **App platform** | Versioned manifests, server-enforced permissions, sandboxed apps + JS SDK — [docs/APP_SDK.md](docs/APP_SDK.md) |
 | **Local mode** | `cage` (Wayland kiosk compositor) + Chromium, started automatically while a monitor is connected |
 
-Design and architecture decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Security model:
+Updates: [docs/UPDATES.md](docs/UPDATES.md). Design and architecture decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Security model:
 [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Install on a Raspberry Pi (image)
@@ -51,7 +52,7 @@ The frontend is plain ES modules — no bundler, no Node on the device. Data liv
 
 ## Do not expose PiOS to the internet
 
-PiOS is designed for a trusted home network. There is no TLS; do not port-forward it. If you need remote access use a
+The repository is public, the device is not meant to be. PiOS is designed for a trusted home network. There is no TLS; do not port-forward it. If you need remote access use a
 VPN (e.g. WireGuard/Tailscale).
 
 See the [Roadmap](docs/ROADMAP.md).

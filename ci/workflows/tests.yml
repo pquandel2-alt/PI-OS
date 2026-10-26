@@ -15,7 +15,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends git ca-certificates python3 python3-fastapi python3-uvicorn \
-            python3-psutil python3-argon2 python3-python-multipart python3-httpx python3-pytest
+            python3-psutil python3-argon2 python3-python-multipart python3-httpx python3-pytest python3-cryptography zstd
       - uses: actions/checkout@v4
       - run: python3 -m pytest -q -p no:cacheprovider tests --ignore=tests/e2e
   backend-pip:
@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      - run: sudo apt-get install -y -qq zstd
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q tests --ignore=tests/e2e
   frontend-e2e:

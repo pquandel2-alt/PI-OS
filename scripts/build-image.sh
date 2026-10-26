@@ -58,15 +58,20 @@ chmod 600 config
 rm -f stage2/EXPORT_IMAGE stage2/EXPORT_NOOBS
 cp -a "$ROOT/image/stage-pios" ./stage-pios
 
-# Stage the payload that 01-run.sh copies into the root file system.
+# Stage the payload that 01-run.sh copies into the root file system. The release tree is produced by the same
+# code that builds OTA packages, so the image and a later OTA update are identical in layout and content.
 FILES=stage-pios/00-pios/files
-mkdir -p "$FILES/opt/pios"
-cp -a "$ROOT/image/overlay/." "$FILES/"
-cp -a "$ROOT/pios" "$ROOT/web" "$ROOT/apps" "$FILES/opt/pios/"
-cp "$ROOT/README.md" "$FILES/opt/pios/README.md"
+mkdir -p "$FILES"
+python3 "$ROOT/scripts/release_tool.py" stage --dest "$FILES/release"
+cp -a "$ROOT/pios_updater" "$FILES/pios_updater"
+tar -C "$ROOT/image/overlay" --exclude=./opt -cf - . | tar -C "$FILES" -xf -
+cp "$ROOT/README.md" "$FILES/README.md"
 find "$FILES" -name __pycache__ -type d -prune -exec rm -rf {} +
+# Default update channel: "beta" until a real-hardware validation is recorded (release/hardware-validation.json).
+CHANNEL="$(python3 -c "import json,sys; g=json.load(open('$ROOT/release/hardware-validation.json')); print('stable' if g.get('validated') is True else 'beta')")"
 cat > "$FILES/pios-release" <<REL
 PIOS_VERSION=${VERSION}
+PIOS_CHANNEL=${CHANNEL}
 PIOS_BUILD=${GIT_SHA}
 PIOS_BUILD_DATE=${BUILD_DATE}
 PIGEN_COMMIT=${PIGEN_COMMIT}

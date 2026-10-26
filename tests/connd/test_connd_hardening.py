@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 UNIT = ROOT / "image/overlay/etc/systemd/system/pios-connd.service"
 pytestmark = pytest.mark.skipif(not (shutil.which("systemd-run") and Path("/run/systemd/system").exists() and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0
-                                     and subprocess.run([sys.executable, "-c", "import dbus, gi"], capture_output=True).returncode == 0),
+                                     and subprocess.run(["/usr/bin/python3", "-c", "import dbus, gi"], capture_output=True).returncode == 0),
                                 reason="needs systemd, passwordless sudo and python3-dbus/python3-gi")
 sh = lambda *a, check=True: subprocess.run(["sudo", "-n", *a], capture_output=True, text=True, check=check)
 

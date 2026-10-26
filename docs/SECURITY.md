@@ -18,6 +18,11 @@ Target: a trusted home LAN. **Not** hardened for the open internet (no TLS).
 | Apps | Third-party code runs only in `sandbox="allow-scripts"` iframes (opaque origin) with CSP `connect-src 'none'`. Server-side capability tokens (HMAC, 1 h) carry the manifest's permissions; the server enforces them. Per-app storage quota. |
 | OS | `pios.service` runs as unprivileged `pios` with `ProtectSystem=strict`, `NoNewPrivileges`, only `CAP_NET_BIND_SERVICE`, private `/tmp` and `/dev`; the kiosk runs as separate `pios-kiosk`; no SSH unless enabled in Imager; no default login password |
 
+## Network & device management
+`pios-connd` (root, three capabilities, seccomp) is the only component that talks to NetworkManager and BlueZ; the backend reaches it over a uid-checked unix socket and only for admins.
+Wi-Fi passwords are never stored, logged or echoed by PiOS; Bluetooth pairing happens only inside a user-started, time-limited dialog; network changes that could cut off the
+administrator are provisional and roll back automatically; firmware installs are limited to an allow-list of official packages with a user-confirmed version. See [CONNECTIVITY.md](CONNECTIVITY.md).
+
 ## Known limits
 
 * No TLS: credentials and session cookies cross the LAN in clear text. Do not use on untrusted networks.

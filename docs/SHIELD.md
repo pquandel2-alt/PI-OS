@@ -10,17 +10,18 @@ component, and a protection that was not verified is never shown as active. Resu
 | `pios.service` (backend) | `pios` | only `CAP_NET_BIND_SERVICE`, seccomp, no W+X, MemoryMax 900 M | web UI, API, quarantine pipeline, audit log |
 | `pios-firewall.service` | root, group pios | **only `CAP_NET_ADMIN`**, seccomp, no W+X | the only thing that may change nftables |
 | `pios-sysops.service` | root, group pios | **no capabilities** | starts/stops a fixed set of units (clamd, signature update, OS check/upgrade) |
+| `pios-connd.service` | root, group pios | `CAP_NET_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_READ_SEARCH`, seccomp, no W+X | Wi-Fi/Bluetooth/hardware management over NetworkManager + BlueZ D-Bus, network lock-out rollback ([CONNECTIVITY.md](CONNECTIVITY.md)) |
 | `pios-updater.service` | root, group pios | moderate sandbox | signed OTA updates ([UPDATES.md](UPDATES.md)) |
 | `pios-kiosk.service` | `pios-kiosk` | none, NoNewPrivileges, own profile | cage + Chromium on HDMI |
 | `pios-os-check/-upgrade.service` | root (oneshot) | APT | Debian security updates, under the shared package lock |
 | `pios-clam-update.service`, `clamav-daemon` | `clamav` | CPU/RAM-limited | signatures / on-demand scanner |
 
-The three helpers talk over unix sockets (`root:pios 0660`), check the caller's uid with `SO_PEERCRED`, accept a handful of verbs, validate
+The helpers talk over unix sockets (`root:pios 0660`), check the caller's uid with `SO_PEERCRED`, accept a handful of verbs, validate
 all input strictly and **never** execute client-supplied text (the firewall accepts a structured policy and renders the nftables script
 itself; sysops maps verbs to fixed unit names). The web UI cannot run shell commands as root.
 
 Hardening is **proven, not asserted**: `tests/firewall/test_unit_hardening.py`, `tests/shield/test_sysops_hardening.py` and
-`tests/test_service_hardening.py` start the real services under real systemd with exactly the sandbox of the unit files (transient
+`tests/connd/test_connd_hardening.py` and `tests/test_service_hardening.py` start the real services under real systemd with exactly the sandbox of the unit files (transient
 units in throw-away network namespaces) and check `CapEff`, seccomp and functionality (login, upload, psutil, nft apply/confirm, unit start).
 
 ## Security status model
@@ -119,7 +120,7 @@ Backend 55 MB RSS and ~0.5 % of one core while idle (x86 dev machine); the firew
 ## What must still be tested on a real Raspberry Pi 5
 
 1. Firewall: kernel has `nf_tables` + `nft_ct`, `nft_limit`, `nft_log`; ruleset loads at boot before the network; mDNS (`pios.local`), DHCP renewals, IPv6 SLAAC/RA, NTP and Wi-Fi keep working; auto-revert works over Wi-Fi.
-2. `pios-firewall`, `pios-sysops`, `pios`, `pios-updater` start under their sandbox on Pi OS (seccomp filter on arm64, MDWE with the arm64 Python/Rust wheels, `ProtectProc`).
+2. `pios-firewall`, `pios-sysops`, `pios-connd`, `pios`, `pios-updater` start under their sandbox on Pi OS (seccomp filter on arm64, MDWE with the arm64 Python/Rust wheels, `ProtectProc`).
 3. ClamAV on arm64: install size, signature download at first boot, **start time and RAM on 4/8 GB**, scan throughput, behaviour when memory is short (OOM score), `clamav-daemon.service` honours the drop-in and the `AlertExceedsMax` config.
 4. APT: Debian-Security + Raspberry Pi archive origin strings match (`apt-cache policy`, `unattended-upgrade --dry-run -v`), kernel/firmware really excluded, lock coordination with an OTA install.
 5. Kiosk: the Chromium policy is applied (`chrome://policy`), the Chromium sandbox works under `NoNewPrivileges` + empty capability set, GPU/Wayland still work with the hardened unit, downloads/DevTools blocked, no way to leave `127.0.0.1`.

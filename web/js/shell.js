@@ -7,7 +7,7 @@ import { WindowManager } from './wm.js';
 import { createOrb } from './orb.js';
 import { createLauncher } from './search.js';
 import { mountSandboxed } from './sandbox.js';
-import { toast, contextMenu, button } from './ui.js';
+import { toast, errorToast, contextMenu, button } from './ui.js';
 
 export async function startShell(root, { onLogout }) {
   const [appList, desktopState] = await Promise.all([api.get('apps'), api.get('desktop')]);
@@ -31,6 +31,9 @@ export async function startShell(root, { onLogout }) {
   const tempChip = h('span', { class: 'chip mono', title: 'CPU-Temperatur' }, icon('temp'), h('span', {}, '–'));
   const netDot = h('span', { class: 'dot', title: 'Netzwerk' });
   const netEl = h('span', { class: 'tb-net', title: 'Netzwerk' }, icon('wifi'), netDot);
+  const trayBtn = (ic, label) => h('button', { class: 'tb-tray hidden', type: 'button', title: label, 'aria-label': label, onclick: () => launch('network', { page: label === 'Bluetooth' ? 'bluetooth' : label === 'Ethernet' ? 'ethernet' : 'wifi' }) }, icon(ic));
+  const trayWifi = trayBtn('wifi', 'WLAN'), trayEth = trayBtn('ethernet', 'Ethernet'), trayBt = trayBtn('bluetooth', 'Bluetooth');
+  const netBanner = h('div', { class: 'net-banner hidden', role: 'alertdialog', 'aria-live': 'assertive', 'aria-label': 'Netzwerkänderung bestätigen' });
   const badge = h('i', { class: 'badge hidden' });
   const bell = h('button', { class: 'tb-btn', type: 'button', 'aria-label': 'Benachrichtigungen', onclick: () => togglePanel() }, icon('bell'), badge);
   const clock = h('button', { class: 'tb-btn clock mono', type: 'button', title: 'Datum', onclick: () => toast(new Date().toLocaleDateString('de-DE', { dateStyle: 'full' })) });
@@ -42,7 +45,7 @@ export async function startShell(root, { onLogout }) {
   } }, icon('user'), h('span', { class: 'tb-user' }, state.me.username));
   const topbar = h('header', { class: 'topbar' },
     h('button', { class: 'tb-brand', type: 'button', onclick: () => launcher.toggle(), 'aria-label': 'App-Launcher' }, icon('spark'), h('b', {}, 'NOVA')), titleEl,
-    h('span', { class: 'spacer' }), cpuChip, tempChip, netEl, bell, clock, userBtn);
+    h('span', { class: 'spacer' }), cpuChip, tempChip, trayEth, trayWifi, trayBt, netEl, bell, clock, userBtn);
 
   const panel = h('div', { class: 'notif-panel hidden panel corners', role: 'region', 'aria-label': 'Benachrichtigungen' });
   const togglePanel = () => { panel.classList.toggle('hidden'); if (!panel.classList.contains('hidden')) { renderPanel(); badge.classList.add('hidden'); } };
@@ -54,7 +57,7 @@ export async function startShell(root, { onLogout }) {
   };
 
   clear(root);
-  root.append(h('div', { class: 'shell' }, topbar, desktop, dockEl, launcher.el, panel));
+  root.append(h('div', { class: 'shell' }, topbar, desktop, dockEl, launcher.el, panel, netBanner));
 
   // ---- apps ----
   const loaders = new Map();
@@ -130,6 +133,32 @@ export async function startShell(root, { onLogout }) {
     const ip = s.net.interfaces.find(i => i.ip)?.ip;
     netEl.title = s.net.online ? `Online · ${ip} · ${s.net.hostname}` : 'Kein Netzwerk';
   });
+  // ---- connectivity tray (WLAN / Ethernet / Bluetooth) and pending-change banner (admins) ----
+  let netLeft = 0, netTimer = null, netPending = false;
+  const setTray = (el, on, cls, title) => { el.classList.toggle('hidden', !on); el.classList.toggle('ok', cls === 'ok'); el.classList.toggle('off', cls === 'off'); if (title) el.title = title; };
+  function renderNet(sum) {
+    const w = sum.wifi, e = sum.ethernet, b = sum.bluetooth;
+    setTray(trayWifi, w.present, w.connected ? 'ok' : 'off', w.connected ? `WLAN: ${w.ssid} (${w.signal ?? '?'} %)` : w.enabled ? 'WLAN: nicht verbunden' : 'WLAN: aus');
+    setTray(trayEth, e.present, e.connected ? 'ok' : 'off', e.connected ? `Ethernet verbunden${e.ip ? ' · ' + e.ip : ''}` : e.carrier ? 'Ethernet: verbinde …' : 'Ethernet: kein Kabel');
+    setTray(trayBt, b.present, b.powered && b.connected?.length ? 'ok' : b.powered ? '' : 'off', b.powered ? (b.connected?.length ? `Bluetooth: ${b.connected.join(', ')}` : 'Bluetooth: an') : 'Bluetooth: aus');
+    netEl.classList.toggle('hidden', true);
+    const pend = sum.pending;
+    netPending = !!pend; netLeft = pend ? pend.seconds_left : 0;
+    if (state.me.role === 'admin' && pend) drawBanner(pend);
+    else if (!pend) netBanner.classList.add('hidden');
+  }
+  function drawBanner(pend) {
+    clear(netBanner).append(icon('alert'), h('div', {}, h('b', {}, 'Netzwerkänderung bestätigen'), h('div', { class: 'hint' }, `${pend.description || 'Eine Änderung'} wird in `, h('span', { class: 'mono', id: 'net-left' }, String(netLeft)), ' s automatisch zurückgenommen, wenn du sie nicht bestätigst.')),
+      button('Bestätigen', { variant: 'primary', onclick: () => api.post('net/confirm').then(() => { toast('Netzwerkänderung bestätigt'); netBanner.classList.add('hidden'); pollNet(); }).catch(errorToast) }),
+      button('Zurücksetzen', { onclick: () => api.post('net/revert').then(() => { toast('Zurückgesetzt'); pollNet(); }).catch(errorToast) }));
+    netBanner.classList.remove('hidden');
+  }
+  const pollNet = () => api.get('net/summary', { quiet: true }).then(renderNet).catch(() => { for (const t of [trayWifi, trayEth, trayBt]) t.classList.add('hidden'); netEl.classList.remove('hidden'); netBanner.classList.add('hidden'); });
+  pollNet();
+  const netPoll = setInterval(() => !document.hidden && pollNet(), 6000);
+  netTimer = setInterval(() => { if (netLeft > 0) { netLeft--; const el = document.getElementById('net-left'); if (el) el.textContent = String(netLeft); if (netLeft === 0) setTimeout(pollNet, 1500); } }, 1000);
+  const offNet = bus.on('notification', n => { if (n.app === 'network') pollNet(); });
+  document.addEventListener('pios-net-pending', pollNet);
   const offOffline = bus.on('system-offline', () => netDot.className = 'dot danger');
   const offNote = bus.on('notification', n => {
     toast(n.title, n.body, n.level);
@@ -161,7 +190,7 @@ export async function startShell(root, { onLogout }) {
     teardown(); onLogout();
   }
   function teardown() {
-    clearInterval(clockTimer); offSys(); offOffline(); offNote(); offPrefs(); offVer(); offUpd();
+    clearInterval(clockTimer); clearInterval(netPoll); clearInterval(netTimer); offNet(); document.removeEventListener('pios-net-pending', pollNet); offSys(); offOffline(); offNote(); offPrefs(); offVer(); offUpd();
     stopPolling(); stopEvents();
     for (const w of [...wm.wins.values()]) w.emit('close');
   }

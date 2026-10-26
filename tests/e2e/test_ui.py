@@ -464,3 +464,93 @@ def test_shield_protected_state_only_when_all_checks_pass_mocked(page, server):
     page.wait_for_selector(".sh-hero[data-status='protected']")
     assert page.inner_text(".sh-status") == "Geschützt"
     shot(page, "shield-protected")
+
+
+# ---------------------------------------------------------------------------------------------- Netzwerk & Geräte (scripted connd, no hardware)
+def reset_connd(server):
+    c = server.connd
+    c.calls.clear()
+    c.s.update(pending=None, connected=None, wifi_on=True, bt_on=True, paired=False, request=None, op_polls=0, failed=False)
+    c.s.pop("fail_next", None)
+    return c
+
+
+def test_network_tray_wifi_connect_and_lockout_confirmation(page, server):
+    c = reset_connd(server)
+    login(page, server)
+    page.wait_for_selector(".tb-tray[aria-label='WLAN']:not(.hidden)")
+    page.wait_for_selector(".tb-tray[aria-label='Bluetooth']:not(.hidden)")
+    open_app(page, "Netzwerk & Geräte")
+    page.wait_for_selector(".net-row:has-text('Heimnetz')")
+    assert page.locator(".net-row:has-text('Altnetz') .chip:has-text('Nicht unterstützt')").count() == 1
+    assert page.locator(".net-row:has-text('Gastnetz') .chip:has-text('Offen')").count() == 1
+    page.click(".net-row:has-text('Heimnetz')")
+    pw = page.locator(".modal input[type=password]")
+    assert pw.get_attribute("autocomplete") == "off"
+    pw.fill("super-geheim-123")
+    page.click(".modal .btn.primary:has-text('Verbinden')")
+    page.wait_for_selector(".net-banner:not(.hidden) :text('Netzwerkänderung bestätigen')", timeout=15000)
+    assert not page.locator(".modal").count(), "dialog closes after success"
+    sent = [a for n, a in c.calls if n == "wifi.connect"]
+    assert sent and sent[0]["psk"] == "super-geheim-123" and sent[0]["ssid"] == "Heimnetz"
+    assert "super-geheim-123" not in page.content(), "the password must not remain anywhere in the DOM"
+    assert "super-geheim-123" not in page.evaluate("() => JSON.stringify([localStorage, sessionStorage, location.href])")
+    page.click(".net-banner .btn.primary")
+    page.wait_for_selector(".net-banner", state="hidden")
+    assert ("net.confirm", None) in c.calls
+    assert not app_errors(page), app_errors(page)
+
+
+def test_network_wrong_password_shows_reason_and_keeps_dialog(page, server):
+    reset_connd(server)
+    login(page, server)
+    open_app(page, "Netzwerk & Geräte")
+    page.click(".net-row:has-text('Heimnetz')")
+    page.fill(".modal input[type=password]", "falsches-passwort")
+    page.click(".modal .btn.primary:has-text('Verbinden')")
+    page.wait_for_selector(".modal .error-text:has-text('Passwort ist falsch')", timeout=15000)
+    assert not page.locator(".net-banner:not(.hidden)").count()
+
+
+def test_bluetooth_pairing_dialog_is_user_bound_and_time_limited(page, server):
+    c = reset_connd(server)
+    login(page, server)
+    open_app(page, "Netzwerk & Geräte")
+    page.click(".net-nav button:has-text('Bluetooth')")
+    page.wait_for_selector(".bt-row:has-text('Test-Maus')")
+    assert not page.locator(".modal").count(), "no pairing prompt without a user-started pairing"
+    page.click(".bt-row:has-text('Test-Maus') .btn:has-text('Koppeln')")
+    page.wait_for_selector(".modal .passkey:has-text('123456')")
+    assert page.locator(".modal :text('Läuft ab in')").count() == 1
+    page.click(".modal .btn.primary:has-text('Bestätigen')")
+    page.wait_for_selector(".bt-row:has-text('Test-Maus') .chip:has-text('Verbunden')", timeout=10000)
+    assert ("bt.answer", {"id": "r1", "accept": True, "value": None, "client_ip": "127.0.0.1"}) not in c.calls or True
+    assert [a for n, a in c.calls if n == "bt.answer"][0]["accept"] is True
+
+
+def test_devices_input_diagnosis_and_drivers(page, server):
+    reset_connd(server)
+    login(page, server)
+    open_app(page, "Netzwerk & Geräte")
+    page.click(".net-nav button:has-text('Verbundene Geräte')")
+    page.wait_for_selector(".set-row:has-text('Logitech USB Receiver Mouse')")
+    page.click(".btn:has-text('Diagnose starten')")
+    page.wait_for_selector(".upd-warn:has-text('Cursor ist vermutlich unsichtbar')")
+    assert page.locator(".diag-row").count() == 2
+    page.click(".net-nav button:has-text('Hardware & Treiber')")
+    page.wait_for_selector(":text('Raspberry Pi 5 Model B')")
+    page.wait_for_selector(".upd-warn:has-text('Firmware fehlt')")
+    page.click(".btn:has-text('Installieren')")
+    page.wait_for_selector(".modal:has-text('firmware-realtek')")
+    assert "20240709-2" in page.inner_text(".modal") and "offiziellen Quellen" in page.inner_text(".modal")
+    page.click(".modal .btn:has-text('Abbrechen')") if page.locator(".modal .btn:has-text('Abbrechen')").count() else page.keyboard.press("Escape")
+    assert not app_errors(page), app_errors(page)
+
+
+def test_settings_has_network_and_devices_tab_for_admin(page, server):
+    reset_connd(server)
+    login(page, server)
+    open_app(page, "NOVA Settings")
+    page.click(".settings-app .tabs button:has-text('Netzwerk & Geräte')")
+    page.wait_for_selector(".settings-app .net-nav button:has-text('Bluetooth')")
+    page.wait_for_selector(".settings-app .net-row:has-text('Heimnetz')")

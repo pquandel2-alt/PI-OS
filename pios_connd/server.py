@@ -351,7 +351,8 @@ def main():
     bt = BluezClient(bus, glib_call=lambda fn, *a: GLib.idle_add(lambda: (fn(*a), False)[1]))
     d = Connd(NMClient(bus), bt, Path(os.getenv("PIOS_CONND_STATE", "/var/lib/pios-connd")))
     d.guard.recover()
-    d.first_run()
+    if os.getenv("PIOS_CONND_FIRST_RUN", "on") != "off":          # "off" exists for sandbox tests on developer machines only
+        d.first_run()
     uids = {0}
     try:
         uids.add(pwd.getpwnam("pios").pw_uid)

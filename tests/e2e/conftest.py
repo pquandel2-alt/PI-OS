@@ -17,7 +17,9 @@ def server(tmp_path_factory):
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     from tests.shield.fake_clamd import FakeClamd
     clam = FakeClamd(data.parent / "clamd.sock")          # speaks the real clamd protocol (incl. FILDES descriptor passing)
-    env = {**os.environ, "PIOS_DATA": str(data), "PIOS_CLAMD_SOCKET": clam.path}
+    from tests.e2e.fake_connd import FakeConnd
+    connd = FakeConnd(data.parent / "connd.sock")           # scripted stand-in for pios-connd (canned data; the real daemon has its own tests)
+    env = {**os.environ, "PIOS_DATA": str(data), "PIOS_CLAMD_SOCKET": clam.path, "PIOS_CONND_SOCKET": connd.path}
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "pios.main:app", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
                             cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   # a never-read PIPE would fill up and block the server
     url = f"http://127.0.0.1:{port}"
@@ -26,8 +28,8 @@ def server(tmp_path_factory):
             socket.create_connection(("127.0.0.1", port), 0.2).close(); break
         except OSError:
             time.sleep(0.2)
-    yield url
-    proc.terminate(); proc.wait(5); clam.stop()
+    yield type("Url", (str,), {"connd": connd})(url)
+    proc.terminate(); proc.wait(5); clam.stop(); connd.stop()
 
 
 @pytest.fixture(scope="session")

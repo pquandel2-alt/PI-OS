@@ -171,3 +171,21 @@
 
 .sh-status-inline { font-size: 18px; } .sh-status-inline.protected { color: #2EE6B0; } .sh-status-inline.limited, .sh-status-inline.attention { color: #FFB454; } .sh-status-inline.critical { color: #FF536B; } .sh-status-inline.unknown { color: var(--violet); }
 .pending-scan:empty { display: none; }
+
+/* ---- NOVA Netzwerk & Geräte ---- */
+.net-app { display: flex; height: 100%; min-height: 0; }
+.net-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); border-right: 1px solid var(--line); min-width: 170px; flex: none; overflow-y: auto; }
+.net-nav button { display: flex; align-items: center; gap: var(--s2); background: none; border: 0; border-radius: var(--r-sm); padding: 9px 12px; color: var(--muted); cursor: pointer; text-align: left; font: inherit; }
+.net-nav button:hover { background: var(--hover); color: var(--text); }
+.net-nav button[aria-selected="true"] { background: rgba(var(--accent-rgb), .14); color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.net-content { flex: 1; min-width: 0; overflow-y: auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+.settings-app .net-app { height: auto; flex-direction: column; } .settings-app .net-nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); min-width: 0; overflow-x: auto; padding: 0 0 var(--s2); }
+.settings-app .net-content { padding: var(--s3) 0 0; overflow: visible; }
+.net-sub { margin-top: var(--s3); } .net-row { cursor: pointer; } .net-row:focus-visible, .bt-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sigbars { display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; width: 20px; flex: none; } .sigbars i { width: 4px; background: var(--line); border-radius: 1px; } .sigbars i:nth-child(1) { height: 25%; } .sigbars i:nth-child(2) { height: 50%; } .sigbars i:nth-child(3) { height: 75%; } .sigbars i:nth-child(4) { height: 100%; } .sigbars i.on { background: var(--accent); }
+.passkey { font-size: 34px; letter-spacing: .3em; text-align: center; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); margin: var(--s2) 0; }
+.check { display: flex; align-items: center; gap: var(--s2); } .diag-row { height: auto; padding: 6px var(--s3); align-items: flex-start; }
+.net-banner { position: fixed; top: 46px; left: 50%; transform: translateX(-50%); z-index: 60; max-width: min(640px, 94vw); display: flex; align-items: center; gap: var(--s3); padding: 10px 14px; background: var(--panel, #10182b); border: 1px solid rgba(255, 180, 84, .6); border-radius: var(--r-sm); box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
+.net-banner.hidden { display: none; }
+.tb-tray { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px 6px; border-radius: var(--r-sm); } .tb-tray:hover { color: var(--text); background: var(--hover); } .tb-tray.off { opacity: .45; } .tb-tray.ok { color: var(--ok); } .tb-tray .icon { font-size: 16px; }
+@media (max-width: 640px) { .net-app { flex-direction: column; } .net-nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); min-width: 0; overflow-x: auto; } .net-nav button span { display: none; } }

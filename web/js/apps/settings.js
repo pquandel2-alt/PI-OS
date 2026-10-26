@@ -9,7 +9,7 @@ const row = (title, hint, control) => h('div', { class: 'set-row' }, h('div', { 
 
 export default {
   mount(body, { win, wm, params, launch }) {
-    const tabs = { profile: 'Profil', look: 'Darstellung', desktop: 'Desktop', ...(state.me.role === 'admin' ? { users: 'Benutzer' } : {}), apps: 'Apps', about: 'System' };
+    const tabs = { profile: 'Profil', look: 'Darstellung', desktop: 'Desktop', ...(state.me.role === 'admin' ? { security: 'Sicherheit', users: 'Benutzer' } : {}), apps: 'Apps', about: 'System' };
     const content = h('div', { class: 'set-content' });
     const tabBar = h('div', { class: 'tabs', role: 'tablist' });
     body.append(h('div', { class: 'settings-app' }, tabBar, content));
@@ -64,6 +64,18 @@ export default {
             if (!await confirmDialog({ title: 'Fensteranordnung zurücksetzen?', message: 'Alle Fenster werden geschlossen und die gespeicherten Positionen gelöscht.', confirm: 'Zurücksetzen' })) return;
             try { await api.put('desktop', { windows: {}, open: [] }); location.reload(); } catch (x) { errorToast(x); }
           } }))));
+      },
+      async security(el) {
+        const card = h('div', { class: 'panel corners set-card' }, h('div', { class: 'label panel-title' }, icon('shield'), ' Sicherheit'), h('div', { class: 'spinner' }));
+        el.append(card);
+        try {
+          const j = await api.get('shield', { quiet: true });
+          const bad = j.checks.filter(c => !['ok', 'info'].includes(c.level));
+          clear(card).append(h('div', { class: 'label panel-title' }, icon('shield'), ' Sicherheit'),
+            h('div', { class: 'upd-row' }, h('b', { class: 'sh-status-inline ' + j.status }, j.label), j.threats ? h('span', { class: 'chip critical' }, `${j.threats} Bedrohung(en)`) : null),
+            ...(bad.length ? bad.slice(0, 4).map(c => h('div', { class: 'hint' }, `• ${c.title}: ${c.detail}`)) : [h('div', { class: 'hint' }, 'Alle erforderlichen Prüfungen bestanden.')]),
+            h('div', { class: 'upd-actions' }, button('NOVA Shield öffnen', { icon: 'shield', variant: 'primary', onclick: () => launch('shield') }), button('Firewall', { onclick: () => launch('shield', { tab: 'firewall' }) }), button('Virenschutz', { onclick: () => launch('shield', { tab: 'malware' }) })));
+        } catch (e) { clear(card).append(h('div', { class: 'error-text' }, e.message)); }
       },
       async users(el) {
         const box = h('div', { class: 'panel corners set-card' });

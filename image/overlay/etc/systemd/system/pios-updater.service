@@ -20,7 +20,7 @@ UMask=0077
 # Intentionally NOT reduced further without real-hardware testing (see docs/UPDATES.md).
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/opt/pios /var/lib/pios /var/lib/pios-updater /run/pios-updater
+ReadWritePaths=/opt/pios /var/lib/pios /var/lib/pios-updater /run/pios-updater /run/pios-pkg.lock
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelModules=yes

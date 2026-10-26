@@ -176,7 +176,7 @@ def system(tmp_path, keypair, gh):
     c.execute("INSERT INTO notes(body) VALUES('wichtig')"); c.execute("PRAGMA user_version=1"); c.commit(); c.close()
     (data / "secret.key").write_bytes(b"k" * 32)
     (data / "files" / "1").mkdir(parents=True); (data / "files" / "1" / "foto.jpg").write_bytes(b"JPEGDATA")
-    paths = Paths(root=root, state=state, data=data, keys=keys, conf=tmp_path / "etc")
+    paths = Paths(root=root, state=state, data=data, keys=keys, conf=tmp_path / "etc", pkg_lock=tmp_path / "pkg.lock")
     env = FakeEnv(paths)
     u = Updater(paths, GitHubSource("x/y", api_base=gh.base, allow_insecure=True), env, health_timeout=2, health_interval=0.05, async_jobs=False)
     s = Sys(); s.u, s.env, s.paths, s.seed, s.gh, s.tmp = u, env, paths, seed, gh, tmp_path

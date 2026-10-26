@@ -12,3 +12,10 @@ fonts-dejavu-core
 curl
 python3-cryptography
 zstd
+nftables
+iproute2
+clamav
+clamav-daemon
+clamav-freshclam
+ca-certificates
+unattended-upgrades

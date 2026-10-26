@@ -31,7 +31,7 @@ for module in (auth, system, prefs, notes, files, events, apps, updates, shield)
 
 @app.get("/healthz", include_in_schema=False)
 def healthz():
-    checks = {"db": db.healthy(), "apps": all(a in apps.registry.apps for a in ("files", "notes", "monitor", "settings", "updates"))}
+    checks = {"db": db.healthy(), "apps": all(a in apps.registry.apps for a in ("files", "notes", "monitor", "settings", "updates", "shield"))}
     return JSONResponse({"ok": all(checks.values()), "version": __version__, "schema": DB_SCHEMA, "checks": checks})
 
 

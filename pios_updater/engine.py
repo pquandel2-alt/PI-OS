@@ -31,6 +31,16 @@ KEEP_BACKUPS = 3
 SNOOZE_DEFAULT_H = 24
 
 
+class _Locks:
+    """Closing releases both flocks (update job lock + shared package lock)."""
+    def __init__(self, *files):
+        self.files = files
+
+    def close(self):
+        for f in self.files:
+            f.close()
+
+
 class UpdateError(Exception):
     """A user-presentable failure of an operation."""
     def __init__(self, msg, code="error"):
@@ -45,6 +55,7 @@ class Paths:
     data: Path            # /var/lib/pios    (pios.db, secret.key, files/)
     keys: Path            # /usr/share/pios/update-keys
     conf: Path = Path("/etc/pios")
+    pkg_lock: Path = Path("/run/pios-pkg.lock")     # shared with APT jobs (pios_sysops.osstatus): no concurrent package operations
 
     @property
     def releases(self): return self.root / "releases"
@@ -258,6 +269,13 @@ class Updater:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError:
                 raise UpdateError("Es läuft bereits ein Update", "busy") from None
+            pkg = open(self.p.pkg_lock, "a")
+            try:
+                fcntl.flock(pkg, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                pkg.close()
+                raise UpdateError("Eine Paketoperation (APT/Sicherheitsupdates) läuft gerade. Bitte in einigen Minuten erneut versuchen.", "busy") from None
+            lock = _Locks(lock, pkg)
             job = self.store.job()
             if job and job.get("state") == "running":
                 raise UpdateError("Ein unterbrochenes Update wird noch wiederhergestellt", "busy")

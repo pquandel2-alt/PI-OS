@@ -12,7 +12,7 @@ import { toast, contextMenu, button } from './ui.js';
 export async function startShell(root, { onLogout }) {
   const [appList, desktopState] = await Promise.all([api.get('apps'), api.get('desktop')]);
   state.appMeta = appList;
-  state.apps = appList.apps.filter(a => a.id !== 'updates' || state.me.role === 'admin');
+  state.apps = appList.apps.filter(a => !['updates', 'shield'].includes(a.id) || state.me.role === 'admin');
   const saved = desktopState || { windows: {}, open: [] };
   const byId = id => state.apps.find(a => a.id === id);
 

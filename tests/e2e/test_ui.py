@@ -216,7 +216,7 @@ def test_settings_theme_motion_and_password(page, server):
     page.click(".seg button:has-text('Cyan')")
     page.wait_for_function("() => document.body.dataset.accent === 'cyan' && document.body.dataset.motion === 'on'")
     page.click(".tabs button:has-text('System')")
-    assert "0.2.0" in page.inner_text(".about-head")
+    assert "0.3.0" in page.inner_text(".about-head")
     page.click(".tabs button:has-text('Profil')")
     pw = page.locator(".set-content form input[type=password]")
     pw.nth(0).fill("carols first password"); pw.nth(1).fill("an even longer password 42"); pw.nth(2).fill("an even longer password 42")
@@ -361,3 +361,106 @@ def test_update_center_without_updater_service(page, server):
     open_app(page, "NOVA Updates")
     page.wait_for_selector(".empty:has-text('Update-Dienst nicht erreichbar')", timeout=8000)
     assert app_errors(page) == []
+
+
+# ----------------------------------------------------------------------------- NOVA Shield
+def shield_status_text(page):
+    return page.inner_text(".sh-status")
+
+
+def test_shield_never_claims_protection_it_cannot_verify(page, server):
+    login(page, server)
+    open_app(page, "NOVA Shield")
+    page.wait_for_selector(".sh-status")
+    label = shield_status_text(page)
+    assert label != "Geschützt", "no firewall/OS helper in the dev server: status must not be 'protected'"
+    fw = page.locator(".sh-card:has-text('Firewall')")
+    assert "Unbekannt" in fw.inner_text() or "Kritisch" in fw.inner_text()
+    for t in ("Firewall", "Virenschutz", "Apps", "Updates", "Protokoll"):
+        page.click(f".tabs button:has-text('{t}')")
+        page.wait_for_timeout(400)
+    page.click(".tabs button:has-text('Apps')")
+    page.wait_for_selector(".sh-card:has-text('Hello NOVA')")
+    assert "storage" in page.inner_text(".sh-card:has-text('Hello NOVA')")
+    shot(page, "shield-overview")
+    assert app_errors(page) == []
+
+
+def test_shield_app_permission_toggle_is_enforced(page, server):
+    login(page, server)
+    open_app(page, "NOVA Shield")
+    page.click(".tabs button:has-text('Apps')")
+    card = page.locator(".sh-card:has-text('Hello NOVA')")
+    card.wait_for()
+    row = card.locator(".set-row:has(.mono:text-is('storage'))")
+    row.locator(".switch").click()
+    page.wait_for_selector(".toast:has-text('Berechtigung entzogen')")
+    # the sandboxed app now gets a server-side 403 for storage
+    open_app(page, "Hello NOVA")
+    frame = page.frame_locator(".win[aria-label='Hello NOVA'] iframe")
+    frame.locator("#inc").click()
+    frame.locator("#err").wait_for()
+    page.wait_for_function("() => [...document.querySelectorAll('iframe')].some(f => true)")
+    page.wait_for_timeout(600)
+    assert "Berechtigung fehlt" in frame.locator("#err").inner_text()
+    # grant it again
+    page.click(".win[aria-label='NOVA Shield']", position={"x": 20, "y": 300})
+    row.locator(".switch").click()
+    page.wait_for_selector(".toast:has-text('Berechtigung erteilt')")
+
+
+def test_upload_scan_flow_clean_and_eicar_and_quarantine_ui(page, server, tmp_path):
+    from tests.shield.fake_clamd import EICAR
+    login(page, server)
+    open_app(page, "NOVA Files")
+    clean = tmp_path / "gruss.txt"; clean.write_text("alles gut")
+    page.set_input_files(".files-app input[type=file]", str(clean))
+    page.wait_for_selector(".file-row:has-text('gruss.txt')", timeout=10000)
+    bad = tmp_path / "rechnung.pdf"; bad.write_bytes(EICAR)
+    page.set_input_files(".files-app input[type=file]", str(bad))
+    page.wait_for_selector(".toast:has-text('Schadsoftware erkannt')", timeout=10000)
+    page.wait_for_timeout(600)
+    assert page.locator(".file-row:has-text('rechnung.pdf')").count() == 0, "infected upload never appears in the file list"
+    open_app(page, "NOVA Shield")
+    page.click(".tabs button:has-text('Virenschutz')")
+    item = page.locator(".sh-q:has-text('rechnung.pdf')")
+    item.wait_for(timeout=8000)
+    assert "MALWARE" in item.inner_text() and "EICAR" in item.inner_text()
+    shot(page, "shield-malware")
+    item.locator(".btn:has-text('Löschen')").click()
+    page.click(".modal .btn.danger")
+    page.wait_for_selector(".sh-q:has-text('rechnung.pdf')", state="detached", timeout=8000)
+
+
+def test_shield_firewall_pending_banner_and_confirm_with_mocked_service(page, server):
+    import json
+    login(page, server)
+    cfg = {"web_scope": "lan", "web_cidrs": [], "ssh": False, "mdns": True, "ping": True}
+    st = {"api": 1, "active": True, "problems": [], "config": cfg, "pending": {"config": {**cfg, "ssh": True}, "seconds_left": 42}, "expected_ports": {"tcp": [22, 80], "udp": [68, 546, 5353]},
+          "last_event": None, "confirm_seconds": 60}
+    seen = []
+    page.route("**/api/shield/firewall", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(st)))
+    def confirm(route):
+        seen.append(route.request.method); route.fulfill(status=200, content_type="application/json", body=json.dumps({**st, "pending": None}))
+    page.route("**/api/shield/firewall/confirm", confirm)
+    open_app(page, "NOVA Shield")
+    page.click(".tabs button:has-text('Firewall')")
+    page.wait_for_selector(".sh-pending")
+    assert "42" in page.inner_text(".sh-pending") and "automatisch" in page.inner_text(".sh-pending")
+    shot(page, "shield-firewall-pending")
+    page.click(".sh-pending .btn:has-text('Bestätigen')")
+    page.wait_for_timeout(500)
+    assert seen == ["POST"]
+
+
+def test_shield_protected_state_only_when_all_checks_pass_mocked(page, server):
+    import json, time
+    login(page, server)
+    now = int(time.time())
+    checks = [{"id": i, "title": t, "level": "ok", "detail": "geprüft", "checked_at": now} for i, t in (("firewall", "Firewall"), ("malware", "Virenschutz"), ("sandbox", "App-Sandbox"), ("os", "Betriebssystem-Updates (Debian)"))]
+    ov = {"status": "protected", "label": "Geschützt", "checks": checks, "threats": 0, "attention": [], "recent_events": [], "time": now}
+    page.route("**/api/shield", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(ov)))
+    open_app(page, "NOVA Shield")
+    page.wait_for_selector(".sh-hero[data-status='protected']")
+    assert page.inner_text(".sh-status") == "Geschützt"
+    shot(page, "shield-protected")

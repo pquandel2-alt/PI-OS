@@ -201,3 +201,32 @@ def test_overview_requires_admin(admin, client):
         assert anna.post(url, json={}).status_code == 403, url
     anon = TestClient(client.app, client=("192.168.1.9", 1)); anon.headers.update({"X-PiOS": "1"})
     assert anon.get("/api/shield").status_code == 401
+
+
+def test_shipped_kiosk_script_and_policy_pass_the_browser_check(shield, monkeypatch):
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "image/overlay"
+    monkeypatch.setenv("PIOS_KIOSK_SCRIPT", str(root / "opt/pios/bin/pios-kiosk-browser"))
+    monkeypatch.setenv("PIOS_CHROMIUM_POLICY", str(root / "etc/chromium/policies/managed/pios.json"))
+    c = check(status(shield), "browser")
+    assert c["level"] == "ok", c
+
+
+def test_chromium_policy_blocks_everything_but_loopback_pios():
+    import json
+    from pathlib import Path
+    pol = json.loads((Path(__file__).resolve().parents[2] / "image/overlay/etc/chromium/policies/managed/pios.json").read_text())
+    assert pol["URLBlocklist"] == ["*"] and set(pol["URLAllowlist"]) == {"http://127.0.0.1/*", "http://localhost/*"}
+    assert pol["DeveloperToolsAvailability"] == 2 and pol["DownloadRestrictions"] == 3 and pol["RemoteDebuggingAllowed"] is False
+    assert pol["ExtensionInstallBlocklist"] == ["*"] and pol["SitePerProcess"] is True
+
+
+def test_kiosk_unit_never_runs_as_root_and_script_has_no_unsafe_flags():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "image/overlay"
+    unit = (root / "etc/systemd/system/pios-kiosk.service").read_text()
+    assert "User=pios-kiosk" in unit and "NoNewPrivileges=yes" in unit and "CapabilityBoundingSet=" in unit
+    code = "\n".join(l for l in (root / "opt/pios/bin/pios-kiosk-browser").read_text().splitlines() if not l.lstrip().startswith("#"))
+    for flag in ("--no-sandbox", "--remote-debugging", "--disable-web-security", "--ignore-certificate-errors", "--disable-site-isolation", "--allow-running-insecure-content"):
+        assert flag not in code
+    assert "umask 077" in code

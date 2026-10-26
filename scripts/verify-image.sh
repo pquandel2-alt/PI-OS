@@ -79,6 +79,68 @@ done
 check "default target is multi-user (no desktop)" bash -c "readlink '$MNT/etc/systemd/system/default.target' | grep -q multi-user"
 check "no Raspberry Pi desktop session installed" bash -c "! test -e '$MNT/usr/bin/startlxde-pi' && ! test -e '$MNT/usr/bin/labwc'"
 
+
+echo "== Security hardening (NOVA Shield)"
+note() { printf '  NOTE  %s\n' "$1"; }
+for u in pios-firewall.service pios-sysops.service pios-clam-update.timer pios-os-check.timer pios-os-upgrade.timer; do
+  check "$u enabled" bash -c "[ \"\$(systemctl --root='$MNT' is-enabled $u 2>/dev/null)\" = enabled ]"
+done
+check "clamd is NOT started at boot (on-demand only)" bash -c "! systemctl --root='$MNT' list-unit-files --state=enabled --no-legend | grep -q '^clamav-daemon.service'"
+check "clamav-daemon.socket masked (a connect() must not wake clamd)" bash -c "[ \"\$(readlink '$MNT/etc/systemd/system/clamav-daemon.socket')\" = /dev/null ]"
+check "stock freshclam daemon and nftables.service disabled" bash -c "! systemctl --root='$MNT' list-unit-files --state=enabled --no-legend | grep -E '^(clamav-freshclam|nftables)\.service'"
+check "no virus signatures baked into the image (<20 MB in /var/lib/clamav)" bash -c "[ \"\$(du -sk '$MNT/var/lib/clamav' 2>/dev/null | cut -f1)\" -lt 20480 ]"
+check "clamd.conf: no duplicated single-value options" python3 - "$MNT/etc/clamav/clamd.conf" <<'PY'
+import collections, sys
+keys = collections.Counter(l.split()[0] for l in open(sys.argv[1]) if l.strip() and l[0].isalpha())
+multi = {"TCPAddr", "ExcludePath", "VirusEvent", "OnAccessIncludePath", "OnAccessExcludePath", "OnAccessMountPath", "Example"}
+dup = [k for k, n in keys.items() if n > 1 and k not in multi]
+sys.exit(1 if dup else 0)
+PY
+check "clamd.conf: socket 660, no double RAM on reload, over-limit files flagged" bash -c "grep -q '^LocalSocketMode 660' '$MNT/etc/clamav/clamd.conf' && grep -q '^ConcurrentDatabaseReload no' '$MNT/etc/clamav/clamd.conf' && grep -q '^AlertExceedsMax yes' '$MNT/etc/clamav/clamd.conf'"
+check "pios user is in group clamav (socket access)" bash -c "grep -E '^clamav:.*[:,]pios(,|\$)' '$MNT/etc/group'"
+check "Chromium policy valid and restricts to loopback PiOS" python3 - "$MNT/etc/chromium/policies/managed/pios.json" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+ok = p["URLBlocklist"] == ["*"] and set(p["URLAllowlist"]) == {"http://127.0.0.1/*", "http://localhost/*"} and p["DeveloperToolsAvailability"] == 2 and p["RemoteDebuggingAllowed"] is False
+sys.exit(0 if ok else 1)
+PY
+check "kiosk script has no unsafe Chromium flags" bash -c "! grep -vE '^[[:space:]]*#' '$MNT/opt/pios/current/bin/pios-kiosk-browser' | grep -E -- '--no-sandbox|--remote-debugging|--disable-web-security|--ignore-certificate-errors|--disable-site-isolation'"
+check "kiosk runs as unprivileged pios-kiosk with NoNewPrivileges" bash -c "grep -q '^User=pios-kiosk' '$MNT/etc/systemd/system/pios-kiosk.service' && grep -q '^NoNewPrivileges=yes' '$MNT/etc/systemd/system/pios-kiosk.service'"
+check "pios.service sandbox directives present" bash -c "for d in NoNewPrivileges=yes ProtectSystem=strict PrivateTmp=yes MemoryDenyWriteExecute=yes 'CapabilityBoundingSet=CAP_NET_BIND_SERVICE' 'SystemCallFilter=@system-service' RestrictAddressFamilies; do grep -q \"^\$d\" '$MNT/etc/systemd/system/pios.service' || exit 1; done"
+check "firewall service limited to CAP_NET_ADMIN" bash -c "grep -q '^CapabilityBoundingSet=CAP_NET_ADMIN\$' '$MNT/etc/systemd/system/pios-firewall.service'"
+check "sysops helper has no capabilities" bash -c "grep -q '^CapabilityBoundingSet=\$' '$MNT/etc/systemd/system/pios-sysops.service'"
+check "kernel/network hardening sysctl installed" test -s "$MNT/etc/sysctl.d/90-pios-hardening.conf"
+check "APT security origins configured, stock timers disabled by config" bash -c "grep -q 'Debian-Security' '$MNT/etc/apt/apt.conf.d/52pios-security' && grep -q 'linux-image' '$MNT/etc/apt/apt.conf.d/52pios-security'"
+check "APT sources are not marked trusted/insecure" bash -c "! grep -rEi 'trusted=yes|allow-insecure=yes|AllowUnauthenticated|AllowInsecureRepositories' '$MNT/etc/apt'"
+check "default firewall ruleset is valid nftables (dry run with host nft)" bash -c "cd '$MNT/usr/lib/pios-firewall' && python3 -c 'from pios_firewall.ruleset import FwConfig, render; print(render(FwConfig(), [\"192.168.0.0/24\"], [\"fd00::/64\"]))' | nft -c -f -"
+check "no unexpected network services enabled (ssh, telnet, vnc, samba, nfs, rpcbind, cups, ftp)" bash -c "! systemctl --root='$MNT' list-unit-files --state=enabled --no-legend | grep -Ei '^(ssh|sshd|telnet|vnc|wayvnc|smbd|nmbd|nfs|rpcbind|cups|vsftpd|proftpd)[a-z.@-]*\.(service|socket)'"
+check "no SSH host keys baked into the image" bash -c "! ls '$MNT'/etc/ssh/ssh_host_*_key >/dev/null 2>&1"
+check "no private keys or access tokens anywhere in the image" bash -c "! grep -rIlE 'BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|PIOS_UPDATE_SIGNING_KEY=' '$MNT/opt' '$MNT/usr/lib/pios-updater' '$MNT/usr/lib/pios-firewall' '$MNT/usr/lib/pios-sysops-lib' '$MNT/usr/share/pios' '$MNT/etc/pios' '$MNT/etc/systemd' '$MNT/home' '$MNT/root' '$MNT/boot/firmware' '$MNT/var/lib' 2>/dev/null | grep -q ."
+check "no snake-oil/default TLS private keys (identical on every device)" bash -c "! ls '$MNT'/etc/ssl/private/*.key >/dev/null 2>&1"
+check "no unit files or service code inside the OTA-updatable tree" bash -c "! find '$MNT/opt/pios' \( -name '*.service' -o -name '*.timer' -o -name 'pios_firewall' -o -name 'pios_sysops' \) | grep -q ."
+check "root account is locked (no password login)" bash -c "awk -F: '\$1==\"root\"{print \$2}' '$MNT/etc/shadow' | grep -qE '^[!*]'"
+check "no account has an empty password" bash -c "! awk -F: '\$2==\"\"' '$MNT/etc/shadow' | grep -q ."
+if python3 -c 'import crypt' 2>/dev/null; then
+  check "no account uses a well-known default password" python3 - "$MNT/etc/shadow" <<'PY'
+import crypt, sys
+common = ["raspberry", "pi", "pios", "nova", "admin", "password", "123456", "12345678", "root", "toor", "changeme", "novauser", "pios-admin"]
+bad = []
+for line in open(sys.argv[1]):
+    user, h = line.split(":")[:2]
+    if h.startswith("$"):
+        for pw in common:
+            try:
+                if crypt.crypt(pw, h) == h:
+                    bad.append(f"{user}:{pw}")
+            except Exception:
+                pass
+print("checked default passwords for", [l.split(":")[0] for l in open(sys.argv[1]) if l.split(":")[1].startswith("$")])
+sys.exit(1 if bad else 0)
+PY
+else
+  note "python crypt module unavailable: default-password check skipped (NOT counted as passed)"
+fi
+
 echo "== arm64 runtime (qemu user emulation)"
 check "python3 is aarch64 ELF" bash -c "file -L '$MNT/usr/bin/python3' | grep -q aarch64"
 check "chromium installed (arm64)" bash -c "file -L '$MNT/usr/bin/chromium' | grep -q aarch64 || file -L '$MNT/usr/lib/chromium/chromium' | grep -q aarch64"

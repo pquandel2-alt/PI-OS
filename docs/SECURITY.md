@@ -1,4 +1,7 @@
-# Security model (0.1)
+# Security model (0.3)
+
+See [SHIELD.md](SHIELD.md) for the full architecture of NOVA Shield (firewall, malware protection, permissions, audit log) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the findings.
+The table below is the original 0.1 summary, kept for reference; where it conflicts with SHIELD.md, SHIELD.md is current.
 
 Target: a trusted home LAN. **Not** hardened for the open internet (no TLS).
 

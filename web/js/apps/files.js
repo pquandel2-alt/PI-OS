@@ -19,6 +19,8 @@ export default {
     const preview = h('aside', { class: 'files-preview hidden' });
     const usageBar = meter(0), usageText = h('span', { class: 'hint' });
     const queue = h('div', { class: 'upload-queue' });
+    const pendingBox = h('div', { class: 'upload-queue pending-scan' });
+    let pendingTimer = null, pendingIds = '';
     const input = h('input', { type: 'file', multiple: true, class: 'hidden', onchange: () => { addUploads([...input.files]); input.value = ''; } });
     const upBtn = button('', { icon: 'up', title: 'Ordner nach oben', onclick: () => go(parent(path)), variant: 'ghost' });
 
@@ -26,7 +28,7 @@ export default {
       button('', { icon: 'refresh', title: 'Aktualisieren', variant: 'ghost', onclick: () => refresh() }), crumbs, h('span', { class: 'spacer' }),
       button('Ordner', { icon: 'folderPlus', onclick: newFolder }), button('Hochladen', { icon: 'upload', variant: 'primary', onclick: () => input.click() }), input);
     const main = h('div', { class: 'files-main' }, list, preview);
-    const footer = h('footer', { class: 'files-footer' }, queue, h('div', { class: 'usage' }, usageText, usageBar));
+    const footer = h('footer', { class: 'files-footer' }, pendingBox, queue, h('div', { class: 'usage' }, usageText, usageBar));
     body.append(h('div', { class: 'files-app' }, toolbar, main, footer));
     const root = body.firstChild;
     const ro = new ResizeObserver(() => root.classList.toggle('narrow', root.clientWidth < 620)); ro.observe(root);
@@ -188,7 +190,7 @@ export default {
         const item = h('div', { class: 'up-item' }, h('span', { class: 'up-name' }, f.name), bar);
         queue.append(item);
         uploads.push((async () => {
-          try { await api.upload(dest, f, p => bar.set(p * 100)); bar.set(100); }
+          try { const res = await api.upload(dest, f, p => bar.set(p * 100)); bar.set(100); scanResult(f.name, res); }
           catch (e) { toast(`Upload fehlgeschlagen: ${f.name}`, e.message, 'error', 7000); }
           finally { setTimeout(() => item.remove(), 600); }
         })());
@@ -199,7 +201,32 @@ export default {
     list.addEventListener('dragover', ev => { if (ev.dataTransfer.types.includes('Files')) ev.preventDefault(); });
     list.addEventListener('drop', ev => { if (ev.target === list || ev.target.closest('.empty')) { ev.preventDefault(); addUploads([...ev.dataTransfer.files]); } });
 
+    // ---- virus-scan feedback: uploads are quarantined and released only after a clean verdict ----
+    function scanResult(name, r) {
+      const st = r?.status;
+      if (!st || st === 'released') return;
+      if (st === 'pending' || st === 'held' || st === 'scanning') { toast(`„${name}“ wird geprüft`, 'Die Datei erscheint, sobald der Virenscan abgeschlossen ist.'); pollPending(); }
+      else if (st === 'infected') toast('Schadsoftware erkannt', `„${name}“: ${r.detection || ''}. Die Datei wurde gesperrt.`, 'error', 9000);
+      else if (st === 'blocked') toast('Datei blockiert', `„${name}“: ${r.reason}`, 'error', 9000);
+      else if (st === 'error') toast('Prüfung fehlgeschlagen', `„${name}“ bleibt gesperrt: ${r.reason}`, 'warn', 9000);
+      else if (st.startsWith('released_unscanned')) toast('Ohne Virenprüfung gespeichert', `„${name}“ wurde NICHT geprüft (Virenschutz deaktiviert oder Scanner nicht verfügbar).`, 'warn', 9000);
+    }
+    async function pollPending() {
+      clearTimeout(pendingTimer);
+      let items = [];
+      try { items = await api.get('files/pending', { quiet: true }); } catch { return; }
+      const waiting = items.filter(i => ['pending', 'held', 'scanning'].includes(i.state));
+      clear(pendingBox);
+      for (const i of items) pendingBox.append(h('div', { class: 'up-item' }, h('span', { class: 'up-name' }, `${i.name} – ${({ pending: 'wartet auf Virenscan', held: 'gesperrt: Scanner nicht bereit', scanning: 'wird geprüft', infected: 'MALWARE – gesperrt', blocked: 'blockiert', error: 'Prüfung fehlgeschlagen' })[i.state] || i.state}`),
+        h('span', { class: 'chip ' + (['infected', 'blocked', 'error'].includes(i.state) ? 'critical' : 'limited') }, i.state === 'infected' ? 'gesperrt' : '…')));
+      const key = waiting.map(i => i.id).join(',');
+      if (pendingIds && key !== pendingIds) refresh();          // something was released meanwhile
+      pendingIds = key;
+      if (waiting.length) pendingTimer = setTimeout(pollPending, 2500);
+    }
+
     await refresh();
-    return { destroy() { ro.disconnect(); } };
+    pollPending();
+    return { destroy() { ro.disconnect(); clearTimeout(pendingTimer); } };
   },
 };

@@ -63,7 +63,7 @@ cp -a "$ROOT/image/stage-pios" ./stage-pios
 FILES=stage-pios/00-pios/files
 mkdir -p "$FILES"
 python3 "$ROOT/scripts/release_tool.py" stage --dest "$FILES/release"
-cp -a "$ROOT/pios_updater" "$FILES/pios_updater"
+cp -a "$ROOT/pios_updater" "$ROOT/pios_firewall" "$ROOT/pios_sysops" "$FILES/"
 tar -C "$ROOT/image/overlay" --exclude=./opt -cf - . | tar -C "$FILES" -xf -
 cp "$ROOT/README.md" "$FILES/README.md"
 find "$FILES" -name __pycache__ -type d -prune -exec rm -rf {} +

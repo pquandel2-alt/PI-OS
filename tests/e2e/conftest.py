@@ -15,7 +15,9 @@ def server(tmp_path_factory):
     pytest.importorskip("playwright")
     data = tmp_path_factory.mktemp("pios-data")
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
-    env = {**os.environ, "PIOS_DATA": str(data)}
+    from tests.shield.fake_clamd import FakeClamd
+    clam = FakeClamd(data.parent / "clamd.sock")          # speaks the real clamd protocol (incl. FILDES descriptor passing)
+    env = {**os.environ, "PIOS_DATA": str(data), "PIOS_CLAMD_SOCKET": clam.path}
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "pios.main:app", "--host", "127.0.0.1", "--port", str(port)],
                             cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     url = f"http://127.0.0.1:{port}"
@@ -25,7 +27,7 @@ def server(tmp_path_factory):
         except OSError:
             time.sleep(0.2)
     yield url
-    proc.terminate(); proc.wait(5)
+    proc.terminate(); proc.wait(5); clam.stop()
 
 
 @pytest.fixture(scope="session")

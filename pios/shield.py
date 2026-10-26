@@ -438,7 +438,7 @@ def check_browser():
     if not os.path.exists(script):
         return chk("browser", "Browser-Härtung (HDMI-Kiosk)", "info", "Kein HDMI-Kiosk auf diesem System.")
     try:
-        text = open(script).read()
+        text = "\n".join(l for l in open(script).read().splitlines() if not l.lstrip().startswith("#"))   # comments may mention the flags
         bad = [f for f in ("--no-sandbox", "--remote-debugging", "--disable-web-security", "--ignore-certificate-errors", "--disable-site-isolation") if f in text]
         pol_ok = os.path.exists(policy)
     except OSError:

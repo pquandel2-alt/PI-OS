@@ -1,0 +1,15 @@
+[Unit]
+Description=PiOS: install Debian security updates (unattended-upgrades, never reboots)
+Wants=network-online.target
+After=network-online.target pios-os-check.service
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/usr/lib/pios-sysops-lib
+ExecStart=/usr/bin/python3 -m pios_sysops.osstatus upgrade
+TimeoutStartSec=4200
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes

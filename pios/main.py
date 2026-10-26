@@ -15,11 +15,12 @@ async def lifespan(_app):
     auth.ensure_setup_code()
     apps.registry.reload()
     apps.sync_app_state()
-    task = asyncio.create_task(updates.notify_loop())
+    tasks = [asyncio.create_task(updates.notify_loop()), asyncio.create_task(shield.malware_loop())]
     try:
         yield
     finally:
-        task.cancel()
+        for t in tasks:
+            t.cancel()
 
 
 app = FastAPI(title="PiOS NOVA", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,

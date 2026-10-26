@@ -1,0 +1,16 @@
+[Unit]
+Description=PiOS: check Debian security updates (verifies repository signatures)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/usr/lib/pios-sysops-lib
+# Same lock the OTA installer holds: APT and the PiOS Update Manager never run package operations concurrently.
+ExecStart=/usr/bin/python3 -m pios_sysops.osstatus check
+TimeoutStartSec=2400
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes

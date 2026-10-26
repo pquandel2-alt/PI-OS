@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily installation of Debian security updates (toggle in NOVA Shield)
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

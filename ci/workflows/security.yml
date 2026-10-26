@@ -18,7 +18,7 @@ jobs:
       - run: pip install -r requirements.txt pip-audit bandit
       - run: pip-audit -r requirements.txt
       - name: bandit (fail on high severity)
-        run: bandit -q -r pios pios_updater pios_firewall pios_sysops scripts -lll
+        run: bandit -q -r pios pios_updater pios_firewall pios_sysops pios_connd scripts -lll
       - name: No secrets or private keys in the tree
         run: |
           ! git grep -n -I -E 'BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}' -- . ':!tests' ':!docs'
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iproute2 curl zstd clamav clamav-daemon clamav-freshclam
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-dbus python3-gi nftables iproute2 curl zstd clamav clamav-daemon clamav-freshclam
       - run: python -m venv ../venv && ../venv/bin/pip install -r requirements.txt -r requirements-dev.txt
       - name: Real ClamAV (signatures + clamd)
         run: |
@@ -39,4 +39,4 @@ jobs:
           sudo systemctl start clamav-daemon
           for i in $(seq 1 90); do [ -S /var/run/clamav/clamd.ctl ] && break; sleep 2; done
           sudo chmod 666 /var/run/clamav/clamd.ctl
-      - run: PIOS_REAL_CLAMD=/var/run/clamav/clamd.ctl ../venv/bin/python -m pytest -q tests/security tests/shield tests/firewall tests/test_service_hardening.py
+      - run: PIOS_REAL_CLAMD=/var/run/clamav/clamd.ctl ../venv/bin/python -m pytest -q tests/security tests/shield tests/firewall tests/test_service_hardening.py tests/connd/test_connd_hardening.py

@@ -19,3 +19,17 @@ clamav-daemon
 clamav-freshclam
 ca-certificates
 unattended-upgrades
+network-manager
+wpasupplicant
+wireless-regdb
+iw
+rfkill
+bluez
+pi-bluetooth
+libinput-tools
+usbutils
+python3-dbus
+python3-gi
+firmware-brcm80211
+firmware-realtek
+firmware-mediatek

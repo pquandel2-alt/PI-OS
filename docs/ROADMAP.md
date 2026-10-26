@@ -15,6 +15,10 @@
 - [x] Security audit + fixes, firewall, ClamAV on demand + quarantine, app permission manager (backend + Shield UI), audit log, OS update monitoring, systemd/Chromium hardening
 - [ ] Validate on a real Pi 5 (list in docs/SHIELD.md)
 
+## 0.3 — Connectivity & Hardware Manager (this release)
+- [x] Wi-Fi, Ethernet (DHCP), Bluetooth pairing, input diagnosis, hardware inventory, driver/firmware manager, lock-out rollback, tray, Shield events + check, image integration
+- [ ] Validate on a real Pi 5 (list in docs/CONNECTIVITY.md); static IP only after the rollback protection is proven on hardware; WPA-Enterprise
+
 ## 0.4 — HTTPS, NOVA Browser, hybrid polish
 - Local-CA HTTPS (design in SHIELD.md), NOVA Browser (separate unit/profile/policy, permission `network.fetch`), per-install permission prompts for third-party apps
 - HTTPS option (self-signed/local CA or Caddy), HSTS when enabled

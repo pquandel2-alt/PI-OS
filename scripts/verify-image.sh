@@ -82,7 +82,7 @@ check "no Raspberry Pi desktop session installed" bash -c "! test -e '$MNT/usr/b
 
 echo "== Security hardening (NOVA Shield)"
 note() { printf '  NOTE  %s\n' "$1"; }
-for u in pios-firewall.service pios-sysops.service pios-clam-update.timer pios-os-check.timer pios-os-upgrade.timer; do
+for u in pios-firewall.service pios-sysops.service pios-connd.service pios-clam-update.timer pios-os-check.timer pios-os-upgrade.timer; do
   check "$u enabled" bash -c "[ \"\$(systemctl --root='$MNT' is-enabled $u 2>/dev/null)\" = enabled ]"
 done
 check "clamd is NOT started at boot (on-demand only)" bash -c "! systemctl --root='$MNT' list-unit-files --state=enabled --no-legend | grep -q '^clamav-daemon.service'"
@@ -109,11 +109,29 @@ check "kiosk runs as unprivileged pios-kiosk with NoNewPrivileges" bash -c "grep
 check "pios.service sandbox directives present" bash -c "for d in NoNewPrivileges=yes ProtectSystem=strict PrivateTmp=yes MemoryDenyWriteExecute=yes 'CapabilityBoundingSet=CAP_NET_BIND_SERVICE' 'SystemCallFilter=@system-service' RestrictAddressFamilies; do grep -q \"^\$d\" '$MNT/etc/systemd/system/pios.service' || exit 1; done"
 check "firewall service limited to CAP_NET_ADMIN" bash -c "grep -q '^CapabilityBoundingSet=CAP_NET_ADMIN\$' '$MNT/etc/systemd/system/pios-firewall.service'"
 check "sysops helper has no capabilities" bash -c "grep -q '^CapabilityBoundingSet=\$' '$MNT/etc/systemd/system/pios-sysops.service'"
+echo "== Connectivity & hardware (NOVA Verbindungen)"
+for u in NetworkManager.service bluetooth.service; do
+  check "$u enabled" bash -c "[ \"\$(systemctl --root='$MNT' is-enabled $u 2>/dev/null)\" = enabled ]"
+done
+for b in NetworkManager wpa_supplicant iw rfkill bluetoothd libinput lsusb cage; do
+  check "installed: $b" bash -c "find '$MNT/usr/sbin' '$MNT/usr/bin' '$MNT/usr/libexec/bluetooth' '$MNT/usr/lib/bluetooth' '$MNT/sbin' '$MNT/bin' -maxdepth 1 -name $b 2>/dev/null | grep -q ."
+done
+check "python3-dbus and python3-gi available for pios-connd" bash -c "ls -d '$MNT'/usr/lib/python3/dist-packages/dbus '$MNT'/usr/lib/python3/dist-packages/gi >/dev/null"
+check "Wi-Fi/Bluetooth firmware packages installed (brcm80211)" bash -c "ls '$MNT'/usr/lib/firmware/brcm/brcmfmac43455* >/dev/null 2>&1 || ls '$MNT'/lib/firmware/brcm/brcmfmac43455* >/dev/null 2>&1"
+check "pios-connd code outside the OTA-updatable tree and importable" bash -c "test -d '$MNT/usr/lib/pios-connd-lib/pios_connd' && ! find '$MNT/opt/pios' -name pios_connd | grep -q . && cd '$MNT/usr/lib/pios-connd-lib' && python3 -c 'import pios_connd.validate, pios_connd.ipc, pios_connd.hw, pios_connd.inputdiag, pios_connd.drivers'"
+check "pios-connd limited to NET_ADMIN, SYS_PTRACE, DAC_READ_SEARCH, no root-writable /etc beyond modprobe.d" bash -c "grep -q '^CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH\$' '$MNT/etc/systemd/system/pios-connd.service' && grep -q '^ReadWritePaths=/etc/modprobe.d\$' '$MNT/etc/systemd/system/pios-connd.service' && grep -q '^NoNewPrivileges=yes' '$MNT/etc/systemd/system/pios-connd.service'"
+check "kiosk uses a software cursor (invisible hardware cursor would look like a dead mouse)" bash -c "grep -q '^Environment=WLR_NO_HARDWARE_CURSORS=1' '$MNT/etc/systemd/system/pios-kiosk.service'"
+check "kiosk user is in the input/video/render groups and logind session via PAM" bash -c "grep -E '^input:.*pios-kiosk' '$MNT/etc/group' && grep -E '^video:.*pios-kiosk' '$MNT/etc/group' && grep -q '^PAMName=login' '$MNT/etc/systemd/system/pios-kiosk.service'"
+check "udev rules: input devices tagged for the seat (uaccess) by systemd" bash -c "grep -rqs 'uaccess' '$MNT/usr/lib/udev/rules.d/70-uaccess.rules' '$MNT/lib/udev/rules.d/70-uaccess.rules' || grep -rqs 'input' '$MNT/usr/lib/udev/rules.d/60-input-id.rules' '$MNT/lib/udev/rules.d/60-input-id.rules'"
+check "no world-writable input/rfkill udev rules (MODE=0666/0777)" bash -c "! grep -rEs 'KERNEL==\"(event|mouse|rfkill|hidraw)[^\"]*\".*MODE=\"0?(666|777)\"' '$MNT/etc/udev/rules.d' '$MNT/usr/lib/udev/rules.d' '$MNT/lib/udev/rules.d'"
+check "Wi-Fi country not hard-coded outside connd (set via UI/first run)" bash -c "! test -e '$MNT/etc/modprobe.d/pios-regdom.conf'"
 check "kernel/network hardening sysctl installed" test -s "$MNT/etc/sysctl.d/90-pios-hardening.conf"
 check "APT security origins configured, stock timers disabled by config" bash -c "grep -q 'Debian-Security' '$MNT/etc/apt/apt.conf.d/52pios-security' && grep -q 'linux-image' '$MNT/etc/apt/apt.conf.d/52pios-security'"
 check "APT sources are not marked trusted/insecure" bash -c "! grep -rEi 'trusted=yes|allow-insecure=yes|AllowUnauthenticated|AllowInsecureRepositories' '$MNT/etc/apt'"
 check "default firewall ruleset is valid nftables (dry run with host nft)" bash -c "cd '$MNT/usr/lib/pios-firewall' && python3 -c 'from pios_firewall.ruleset import FwConfig, render; print(render(FwConfig(), [\"192.168.0.0/24\"], [\"fd00::/64\"]))' | nft -c -f -"
-check "no unexpected network services enabled (ssh, telnet, vnc, samba, nfs, rpcbind, cups, ftp)" bash -c "! systemctl --root='$MNT' list-unit-files --state=enabled --no-legend | grep -Ei '^(ssh|sshd|telnet|vnc|wayvnc|smbd|nmbd|nfs|rpcbind|cups|vsftpd|proftpd)[a-z.@-]*\.(service|socket)'"
+echo "     enabled units: $(systemctl --root="$MNT" list-unit-files --state=enabled --no-legend | awk '{print $1}' | tr '\n' ' ')"
+BADSVC="$(systemctl --root="$MNT" list-unit-files --state=enabled --no-legend | awk '{print $1}' | grep -Ei '^(ssh|sshd|telnet|vnc|wayvnc|smbd|nmbd|nfs|rpcbind|cups|vsftpd|proftpd)[a-z.@-]*\.(service|socket)' | grep -Ev '^(sshd-keygen|sshswitch).service$' || true)"   # sshd-keygen (host keys) and sshswitch (enables ssh only if /boot/firmware/ssh exists) open no port themselves; Pi OS needs it for Imager's SSH option
+check "no unexpected network services enabled (ssh, telnet, vnc, samba, nfs, rpcbind, cups, ftp)${BADSVC:+ - FOUND: $BADSVC}" test -z "$BADSVC"
 check "no SSH host keys baked into the image" bash -c "! ls '$MNT'/etc/ssh/ssh_host_*_key >/dev/null 2>&1"
 check "no private keys or access tokens anywhere in the image" bash -c "! grep -rIlE 'BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|PIOS_UPDATE_SIGNING_KEY=' '$MNT/opt' '$MNT/usr/lib/pios-updater' '$MNT/usr/lib/pios-firewall' '$MNT/usr/lib/pios-sysops-lib' '$MNT/usr/share/pios' '$MNT/etc/pios' '$MNT/etc/systemd' '$MNT/home' '$MNT/root' '$MNT/boot/firmware' '$MNT/var/lib' 2>/dev/null | grep -q ."
 check "no snake-oil/default TLS private keys (identical on every device)" bash -c "! ls '$MNT'/etc/ssl/private/*.key >/dev/null 2>&1"

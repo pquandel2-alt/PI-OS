@@ -9,13 +9,13 @@ const row = (title, hint, control) => h('div', { class: 'set-row' }, h('div', { 
 
 export default {
   mount(body, { win, wm, params, launch }) {
-    const tabs = { profile: 'Profil', look: 'Darstellung', desktop: 'Desktop', ...(state.me.role === 'admin' ? { security: 'Sicherheit', users: 'Benutzer' } : {}), apps: 'Apps', about: 'System' };
+    const tabs = { profile: 'Profil', look: 'Darstellung', desktop: 'Desktop', network: 'Netzwerk & Geräte', ...(state.me.role === 'admin' ? { security: 'Sicherheit', users: 'Benutzer' } : {}), apps: 'Apps', about: 'System' };
     const content = h('div', { class: 'set-content' });
     const tabBar = h('div', { class: 'tabs', role: 'tablist' });
     body.append(h('div', { class: 'settings-app' }, tabBar, content));
-    let current = params?.tab || 'profile';
+    let current = params?.tab || 'profile', netPanel = null;
     const show = t => {
-      current = t;
+      current = t; netPanel?.destroy?.(); netPanel = null;
       clear(tabBar).append(...Object.entries(tabs).map(([k, v]) => h('button', { role: 'tab', 'aria-selected': String(k === t), onclick: () => show(k) }, v)));
       clear(content);
       views[t](content);
@@ -64,6 +64,11 @@ export default {
             if (!await confirmDialog({ title: 'Fensteranordnung zurücksetzen?', message: 'Alle Fenster werden geschlossen und die gespeicherten Positionen gelöscht.', confirm: 'Zurücksetzen' })) return;
             try { await api.put('desktop', { windows: {}, open: [] }); location.reload(); } catch (x) { errorToast(x); }
           } }))));
+      },
+      async network(el) {
+        const { mountPanel } = await import('./network.js');
+        netPanel?.destroy?.();
+        netPanel = mountPanel(el, { params: params?.page ? { page: params.page } : undefined, launch });
       },
       async security(el) {
         const card = h('div', { class: 'panel corners set-card' }, h('div', { class: 'label panel-title' }, icon('shield'), ' Sicherheit'), h('div', { class: 'spinner' }));
@@ -139,6 +144,6 @@ export default {
       return card;
     }
     show(current);
-    return { params: p => p?.tab && show(p.tab) };
+    return { params: p => p?.tab && show(p.tab), destroy: () => netPanel?.destroy?.() };
   },
 };

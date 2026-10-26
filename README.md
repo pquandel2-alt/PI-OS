@@ -20,6 +20,7 @@ keyboard and the same desktop appears full screen on the device.
 | **NOVA Monitor** | Live CPU, RAM, temperature, disk, uptime, network (no reloads) |
 | **NOVA Settings** | Profile, password, sessions, appearance (accent, animations, orb), desktop, users (admin), installed apps, system info |
 | **NOVA Shield** | Security center: honest status model, nftables firewall with lock-out protection, on-demand ClamAV with upload quarantine, per-app permissions enforced server-side, OS security-update monitoring, tamper-evident audit log — [docs/SHIELD.md](docs/SHIELD.md) |
+| **Netzwerk & Geräte** | Wi-Fi (scan/connect/hidden/saved/forget), Ethernet info + DHCP, Bluetooth pairing (PIN/confirm dialogs), connected input devices with a layer-by-layer mouse diagnosis, hardware inventory, firmware/driver detection with confirmed installs from official sources; automatic rollback if a network change locks you out — [docs/CONNECTIVITY.md](docs/CONNECTIVITY.md) (not yet tested on real hardware) |
 | **NOVA Updates** | Signed OTA updates from GitHub Releases with live progress, automatic backup, health check and application rollback, Stable/Beta channels — [docs/UPDATES.md](docs/UPDATES.md) |
 | **App platform** | Versioned manifests, server-enforced permissions, sandboxed apps + JS SDK — [docs/APP_SDK.md](docs/APP_SDK.md) |
 | **Local mode** | `cage` (Wayland kiosk compositor) + Chromium, started automatically while a monitor is connected |

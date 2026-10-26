@@ -140,3 +140,68 @@ def test_socket_server_enforces_caller_and_protocol(tmp_path):
     s.allowed_uids = {123456}
     assert ask(b'{"method":"ping"}\n')["code"] == "forbidden"
     s.shutdown(); s.server_close()
+
+
+# ---- driver / firmware packages -------------------------------------------------------------------------------------
+POLICY_NEW = "firmware-realtek:\n  Installed: (none)\n  Candidate: 20250410-2\n  Version table:\n     20250410-2 500\n        500 http://deb.debian.org/debian trixie/non-free-firmware arm64 Packages\n"
+POLICY_FOREIGN = POLICY_NEW.replace("deb.debian.org", "evil.example")
+
+
+def pkg_ops(policy):
+    ctl = FakeCtl()
+    return Ops(ctl, runner=lambda cmd, timeout=0: (0, policy)), ctl
+
+
+def test_install_only_allow_listed_packages_with_confirmed_version():
+    ops, ctl = pkg_ops(POLICY_NEW)
+    r = ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "20250410-2"})
+    assert r["started"] and ctl.calls == [("start", "pios-pkg-install@firmware-realtek.service")] and "Neustart" in r["reboot_hint"]
+
+
+@pytest.mark.parametrize("pkg", ["openssh-server", "bash", "firmware-realtek; rm -rf /", "--allow-unauthenticated", "../x", "", None, 5, "FIRMWARE-REALTEK", "a" * 80])
+def test_other_packages_and_injection_attempts_are_refused(pkg):
+    ops, ctl = pkg_ops(POLICY_NEW)
+    with pytest.raises(OpError):
+        ops.dispatch("pkg.install", {"package": pkg, "version": "20250410-2"})
+    assert ctl.calls == []
+
+
+def test_version_must_match_what_the_user_confirmed():
+    ops, ctl = pkg_ops(POLICY_NEW)
+    with pytest.raises(OpError) as e:
+        ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "1.0"})
+    assert e.value.code == "version_changed"
+    with pytest.raises(OpError):
+        ops.dispatch("pkg.install", {"package": "firmware-realtek"})
+    assert ctl.calls == []
+
+
+def test_packages_from_unofficial_sources_are_never_installed():
+    ops, ctl = pkg_ops(POLICY_FOREIGN)
+    with pytest.raises(OpError) as e:
+        ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "20250410-2"})
+    assert e.value.code == "untrusted_source" and ctl.calls == []
+
+
+def test_unavailable_installed_and_running_states():
+    ops, ctl = pkg_ops("N: Unable to locate package firmware-realtek\n")
+    with pytest.raises(OpError) as e:
+        ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "x"})
+    assert e.value.code == "unavailable"
+    ops, ctl = pkg_ops(POLICY_NEW.replace("Installed: (none)", "Installed: 20250410-2"))
+    with pytest.raises(OpError) as e:
+        ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "20250410-2"})
+    assert e.value.code == "already_installed"
+    ops, ctl = pkg_ops(POLICY_NEW)
+    ctl.states["pios-pkg-install@firmware-realtek.service"] = {"ActiveState": "active"}
+    with pytest.raises(OpError) as e:
+        ops.dispatch("pkg.install", {"package": "firmware-realtek", "version": "20250410-2"})
+    assert e.value.code == "busy"
+    st = ops.dispatch("pkg.status", {"package": "firmware-realtek"})
+    assert st["running"] is True and st["official"] is True and st["candidate"] == "20250410-2"
+
+
+def test_template_unit_uses_the_shared_lock_and_double_checks_the_allow_list():
+    from pathlib import Path
+    u = (Path(__file__).resolve().parents[2] / "image/overlay/etc/systemd/system/pios-pkg-install@.service").read_text()
+    assert "/run/pios-pkg.lock" in u and "apt-get install -y --no-install-recommends -- %i" in u and "ALLOWED" in u and "ExecStartPre" in u

@@ -35,3 +35,6 @@
 | Third-party apps never run in the backend | They are static web apps in sandboxed, network-less iframes. A future "server component" would need a separate container/user per app; this is deliberately out of scope for 0.1. |
 | Setup code for remote first-run | Prevents the first LAN client from taking over an unconfigured device. Physical access (HDMI/SD card) proves ownership. |
 | Port 80 with `CAP_NET_BIND_SERVICE` | `http://pios.local` without a port; no root and no reverse proxy needed. |
+
+## Connectivity
+The backend never touches NetworkManager, BlueZ or hardware directly. `pios_connd` (root helper, D-Bus clients, sysfs/udev readers) is reached through `pios/connectivity.py`; see [CONNECTIVITY.md](CONNECTIVITY.md).

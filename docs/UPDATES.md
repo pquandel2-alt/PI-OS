@@ -66,7 +66,8 @@ backend; the UI reconnects by itself and reloads when the new version is active.
 * **After power loss:** on start the Update Manager inspects its journal: if the switch had not happened it just
   cleans up; if it had, it health-checks the new version and commits or rolls back.
 * **Scope:** this is an **application rollback** (PiOS code + its database). There is **no OS rollback** of Linux,
-  kernel or system packages; OTA packages never touch them.
+  kernel or system packages; OTA packages never touch them. The same holds for the privileged helpers (`pios_updater`, `pios_firewall`, `pios_sysops`,
+  `pios_connd`) and their unit files: they live outside the OTA tree and change only with a new image (see [CONNECTIVITY.md](CONNECTIVITY.md#what-can-be-updated-how)).
 
 ## Channels
 

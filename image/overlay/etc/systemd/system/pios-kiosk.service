@@ -9,7 +9,8 @@ Type=simple
 User=pios-kiosk
 Group=pios-kiosk
 EnvironmentFile=-/etc/pios/pios.conf
-Environment=WLR_NO_HARDWARE_CURSORS=0
+# Software cursor: some Pi 5 / vc4 setups show no pointer with the hardware cursor plane although the mouse works (pointer invisible = 'mouse dead').
+Environment=WLR_NO_HARDWARE_CURSORS=1
 PAMName=login
 TTYPath=/dev/tty1
 TTYReset=yes

@@ -14,6 +14,7 @@ supported by the stock kernel/firmware (`kernel_2712.img`, `bcm2712-rpi-5-b.dtb`
 | `pios-updater.service` | enabled; signed OTA updates, backup, rollback — see [UPDATES.md](UPDATES.md) |
 | `/var/lib/pios`, `/var/lib/pios-updater` | data / updater state, downloads and backups (`pios` user, mode 0700), created by `StateDirectory=` |
 | `pios.service` | backend on port 80, hardened, enabled |
+| `pios-connd.service`, `/usr/lib/pios-connd-lib` | connectivity helper (not OTA-updatable); NetworkManager + BlueZ enabled — see [CONNECTIVITY.md](CONNECTIVITY.md) |
 | `pios-display.service` | enabled; starts `pios-kiosk.service` (cage + Chromium) while an HDMI monitor is connected |
 | `pios-setup-notice.{service,path}` | writes the first-run setup code to the console (`/etc/issue.d`) and `/boot/firmware/PIOS-SETUP.txt`, removes it after setup |
 | `/etc/pios/pios.conf` | `KIOSK=auto|off`, keyboard layout. `touch /boot/firmware/pios-kiosk-off` also disables the local desktop |
@@ -69,6 +70,7 @@ Not covered by emulation; must be done on a real Raspberry Pi 5 before calling t
 - [ ] Imager writes the image; Pi 5 boots from SD and from SSD (USB/NVMe); file system expands on first boot
 - [ ] `pios.local` resolves (mDNS) on the LAN; setup code visible on HDMI console and in `PIOS-SETUP.txt`
 - [ ] Wi-Fi via Imager customisation; Ethernet DHCP
+- [ ] Connectivity manager: Wi-Fi/Bluetooth UI, wireless mouse (USB dongle **and** Bluetooth), lock-out rollback — full list in [CONNECTIVITY.md](CONNECTIVITY.md#still-to-test-on-a-real-raspberry-pi-5)
 - [ ] HDMI kiosk: cage + Chromium start with a monitor, hotplug start/stop, mouse/keyboard, GPU acceleration, German keyboard
 - [ ] Temperature sensor and throttling values in NOVA Monitor, orb performance (CPU use with animations on)
 - [ ] Reboot persistence of data and sessions; behaviour after hard power loss

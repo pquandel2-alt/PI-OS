@@ -1,0 +1,18 @@
+[Unit]
+Description=PiOS: install allow-listed driver/firmware package %i (official APT sources only)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/usr/lib/pios-sysops-lib DEBIAN_FRONTEND=noninteractive
+# Defence in depth: the instance name must be on the allow-list even if someone starts this unit directly.
+ExecStartPre=/usr/bin/python3 -c "import sys; from pios_sysops.packages import ALLOWED; sys.exit(0 if sys.argv[1] in ALLOWED else 1)" %i
+# Same lock as the OTA installer and the security-update jobs: no concurrent package operations.
+ExecStart=/usr/bin/flock -w 900 /run/pios-pkg.lock /usr/bin/apt-get install -y --no-install-recommends -- %i
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes

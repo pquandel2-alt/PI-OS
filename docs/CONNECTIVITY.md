@@ -39,7 +39,7 @@ saved networks (auto-connect toggle, forget), disconnect, IP/gateway/DNS display
 Unsupported: WEP (refused with explanation) and WPA-Enterprise/802.1X (shown, not connectable yet).
 
 * **Regulatory domain.** Raspberry Pi OS ships with the Wi-Fi radio **off** until a country is set (`WirelessEnabled=false`, `rfkill.default_state=0`).
-  On first start `pios-connd` sets the image default country **DE** (override at build time with `PIOS_WIFI_COUNTRY`), persists it
+  On first start `pios-connd` sets the image default country **DE** (overridable with the environment variable `PIOS_WIFI_COUNTRY` of `pios-connd`), persists it
   (`/etc/modprobe.d/pios-regdom.conf` → `cfg80211 ieee80211_regdom=`), applies it (`iw reg set`), unblocks rfkill and enables Wi-Fi — exactly once;
   later the user's choice is respected. The country is changeable in the UI (allow-list of country codes, never `00`).
 * A failed connection removes the half-created profile again, so a wrong password does not leave a broken saved network behind.

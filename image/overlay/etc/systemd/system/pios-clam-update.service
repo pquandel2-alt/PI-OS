@@ -1,0 +1,23 @@
+[Unit]
+Description=Update ClamAV signatures (on demand / daily), no resident daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=clamav
+Group=clamav
+ExecStart=/usr/bin/freshclam --quiet --no-warnings
+TimeoutStartSec=900
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/clamav /var/log/clamav
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes

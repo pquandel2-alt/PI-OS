@@ -4,11 +4,17 @@ PROFILE="${HOME:-/var/lib/pios-kiosk}/chromium"
 mkdir -p "$PROFILE"
 # Avoid the "Chromium did not shut down correctly" bubble after a power cut.
 sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"Crashed"/"exit_type":"Normal"/' "$PROFILE/Default/Preferences" 2>/dev/null || true
+# Security: the Chromium sandbox stays ON (no --no-sandbox), the browser runs as the unprivileged user pios-kiosk, there is no
+# remote-debugging port, and /etc/chromium/policies/managed/pios.json restricts it to PiOS on loopback (no DevTools, no downloads,
+# no extensions, no sync). Do not add --no-sandbox / --remote-debugging-* / --disable-web-security here; NOVA Shield checks for them.
+umask 077
 exec chromium \
   --kiosk --user-data-dir="$PROFILE" \
   --ozone-platform=wayland --enable-features=UseOzonePlatform \
   --noerrdialogs --disable-infobars --disable-session-crashed-bubble --no-first-run --no-default-browser-check \
   --disable-translate --disable-pinch --overscroll-history-navigation=0 \
   --password-store=basic --disable-save-password-bubble \
+  --disable-extensions --disable-sync --disable-background-networking --disable-component-update --no-pings \
+  --disable-features=Translate,MediaRouter,OptimizationHints,InterestFeedContentSuggestions \
   --disk-cache-size=52428800 --lang=de-DE \
   http://127.0.0.1/

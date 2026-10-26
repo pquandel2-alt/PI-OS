@@ -56,7 +56,31 @@ def tx():
 
 # version -> SQL that upgrades from version-1. Version 1 is the baseline (SCHEMA, idempotent), so databases
 # created by 0.1.x (user_version 0) are adopted. Add new steps here and bump DB_SCHEMA in pios/__init__.py.
-MIGRATIONS: dict[int, str] = {}
+MIGRATIONS: dict[int, str] = {
+    # 2 (0.3.0): NOVA Shield - app permissions, tamper-evident audit log, upload quarantine, scan history, settings
+    2: """
+CREATE TABLE IF NOT EXISTS app_state(
+  app TEXT PRIMARY KEY, origin TEXT NOT NULL, version TEXT NOT NULL, requested TEXT NOT NULL,
+  first_seen INTEGER NOT NULL, updated INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS app_grants(
+  app TEXT NOT NULL, perm TEXT NOT NULL, granted_by TEXT NOT NULL, time INTEGER NOT NULL, PRIMARY KEY(app, perm));
+CREATE TABLE IF NOT EXISTS audit(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, severity TEXT NOT NULL, actor TEXT NOT NULL,
+  ip TEXT NOT NULL, detail TEXT NOT NULL, prev TEXT NOT NULL, hash TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS audit_kind ON audit(kind, ts);
+CREATE TABLE IF NOT EXISTS audit_anchor(id INTEGER PRIMARY KEY CHECK(id = 1), hash TEXT NOT NULL, upto INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS quarantine(
+  id TEXT PRIMARY KEY, uid INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, dest_dir TEXT NOT NULL, name TEXT NOT NULL,
+  size INTEGER NOT NULL, sha256 TEXT NOT NULL, detected_type TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+  detection TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, scanned INTEGER, origin TEXT NOT NULL DEFAULT 'upload');
+CREATE INDEX IF NOT EXISTS quarantine_state ON quarantine(state);
+CREATE TABLE IF NOT EXISTS scans(
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, started INTEGER NOT NULL, finished INTEGER,
+  files INTEGER NOT NULL DEFAULT 0, bytes INTEGER NOT NULL DEFAULT 0, infected INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '', uid INTEGER);
+CREATE TABLE IF NOT EXISTS shield_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+""",
+}
 
 
 class SchemaTooNew(RuntimeError):

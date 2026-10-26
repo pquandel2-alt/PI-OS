@@ -11,18 +11,23 @@
 - [x] Signed OTA updates, versioned releases, backup, rollback, Stable/Beta, Update Center UI
 - [ ] Validate on real hardware, then record it in `release/hardware-validation.json` to allow `stable`
 
-## 0.3 — Hardening and hybrid polish
+## 0.3 — NOVA Shield (this release)
+- [x] Security audit + fixes, firewall, ClamAV on demand + quarantine, app permission manager (backend + Shield UI), audit log, OS update monitoring, systemd/Chromium hardening
+- [ ] Validate on a real Pi 5 (list in docs/SHIELD.md)
+
+## 0.4 — HTTPS, NOVA Browser, hybrid polish
+- Local-CA HTTPS (design in SHIELD.md), NOVA Browser (separate unit/profile/policy, permission `network.fetch`), per-install permission prompts for third-party apps
 - HTTPS option (self-signed/local CA or Caddy), HSTS when enabled
 - Backup/restore of `/var/lib/pios`, data export per user
 - Kiosk: on-screen keyboard, idle/screen-blank policy, display rotation, multi-monitor
 - Notes: Markdown preview, pinned notes; Files: trash, zip download, multi-select
 - Optional automatic installation of updates, updater key rotation / "core update"; audit log
 
-## 0.4 — App Engine
+## 0.5 — App Engine, NOVA AI (needs an officially supported access path; permission `ai.chat`)
 - Install/update/uninstall apps from a package (`.piosapp`), signature verification
 - Per-install permission prompts and a permission manager in Settings
 - Optional server components in isolated systemd units (own user, `ProtectSystem`, cgroup limits) behind a broker API
 - Background tasks, scheduled jobs, `pios.ui` components library
 
-## 0.5 — Developer experience
+## 0.6 — Developer experience
 - `pios` CLI (scaffold, validate manifest, pack), SDK typings, hot-reload dev mode, code editor app

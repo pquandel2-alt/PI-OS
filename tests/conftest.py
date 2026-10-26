@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PIOS_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("PIOS_ALLOWED_HOSTS", "testserver")
+    monkeypatch.setenv("PIOS_MALWARE", "off")
     monkeypatch.setenv("PIOS_APPS", str(Path(__file__).resolve().parent.parent / "apps"))
     for m in [m for m in sys.modules if m == "pios" or m.startswith("pios.")]:
         del sys.modules[m]
@@ -33,3 +35,12 @@ def admin(client, code):
     r = client.post("/api/login", json={"username": "admin", "password": "correct horse battery"})
     assert r.status_code == 200
     return client
+
+
+def register_app(client, app_id, perms, name=None):
+    """Register an extra sandboxed app (granted all requested permissions like a bundled app) and return its bearer header."""
+    from pios import apps
+    m = apps.Manifest(id=app_id, name=name or app_id.title(), version="1.0.0", permissions=perms)
+    apps.registry.apps[app_id] = m
+    apps.sync_app_state()
+    return {"Authorization": "Bearer " + client.post(f"/api/apps/{app_id}/token").json()["token"]}

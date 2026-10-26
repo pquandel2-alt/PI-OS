@@ -1,0 +1,44 @@
+[Unit]
+Description=PiOS system-operations helper (starts/stops ClamAV, refreshes signatures, OS update checks)
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=pios
+Environment=PYTHONPATH=/usr/lib/pios-sysops-lib PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m pios_sysops.server
+Restart=always
+RestartSec=3
+RuntimeDirectory=pios-sysops
+RuntimeDirectoryMode=0755
+StateDirectory=pios-sysops
+StateDirectoryMode=0755
+UMask=0022
+
+# The helper never installs anything itself: it asks systemd to start a fixed set of units. No capabilities needed.
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/pios
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

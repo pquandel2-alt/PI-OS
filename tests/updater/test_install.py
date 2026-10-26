@@ -250,3 +250,19 @@ def test_old_releases_pruned_but_current_and_previous_kept(system):
 def test_state_files_survive_corruption_gracefully(system):
     system.u.store.status_path.write_text("{broken")
     assert system.u.status()["available"] is None
+
+
+def test_ota_install_refuses_while_apt_holds_the_package_lock(system):
+    import fcntl
+    system.publish("0.2.0"); system.u.check()
+    fd = os.open(system.paths.pkg_lock, os.O_RDWR | os.O_CREAT)
+    fcntl.flock(fd, fcntl.LOCK_EX)                     # an APT job (pios_sysops.osstatus) is running
+    try:
+        with pytest.raises(UpdateError) as e:
+            system.u.install("0.2.0")
+        assert e.value.code == "busy" and "Paketoperation" in str(e.value) and cur(system) == "0.1.0"
+    finally:
+        os.close(fd)
+    system.u.install("0.2.0")                           # lock released -> works, and releases the lock again
+    assert cur(system) == "0.2.0"
+    fd = os.open(system.paths.pkg_lock, os.O_RDWR); fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); os.close(fd)

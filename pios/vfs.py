@@ -7,11 +7,17 @@ import mimetypes
 import os
 import shutil
 import stat
+import unicodedata
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from . import config
+
+
+# control, format (bidi overrides, zero-width, BOM), surrogate, private-use, unassigned, line/paragraph separators:
+# these enable filename spoofing ("invoice\u202Efdp.exe" displays as "invoiceexe.pdf") and invisible look-alikes.
+_BAD_CATEGORIES = {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"}
 
 
 def user_root(uid: int) -> Path:
@@ -22,7 +28,7 @@ def user_root(uid: int) -> Path:
 
 def valid_name(name: str) -> str:
     if (not name or name in (".", "..") or len(name.encode()) > 255 or "/" in name or "\\" in name
-            or any(ord(ch) < 32 or ord(ch) == 127 for ch in name)):
+            or any(unicodedata.category(ch) in _BAD_CATEGORIES for ch in name)):
         raise HTTPException(400, "Ungültiger Name")
     return name
 
@@ -107,6 +113,24 @@ def remove(root: Path, rel: str):
     if p == root:
         raise HTTPException(400, "Wurzelordner kann nicht gelöscht werden")
     shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+
+_usage_cache: dict[int, tuple[float, int]] = {}
+
+
+def used_bytes(uid: int, ttl: float = 30.0) -> int:
+    """Per-user usage with a short cache (a full tree walk on every request would be a DoS vector)."""
+    import time
+    hit = _usage_cache.get(uid)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    size = tree_size(user_root(uid))
+    _usage_cache[uid] = (time.monotonic(), size)
+    return size
+
+
+def invalidate_usage(uid: int):
+    _usage_cache.pop(uid, None)
 
 
 def tree_size(p: Path) -> int:

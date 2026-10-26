@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import config, db, events
+from . import audit, config, db, events, security
 from .security import admin_user
 
 log = logging.getLogger("pios.updates")
@@ -94,7 +94,8 @@ def check(u=Depends(admin_user)):
 
 
 @router.post("/install")
-def install(b: InstallBody, u=Depends(admin_user)):
+def install(b: InstallBody, request: Request, u=Depends(admin_user)):
+    audit.event("update.install_requested", "notice", actor=u["username"], ip=security.client_ip(request), version=b.version)
     return _call("install", {"version": b.version}, timeout=30)
 
 
@@ -104,12 +105,14 @@ def cancel(u=Depends(admin_user)):
 
 
 @router.post("/rollback")
-def rollback(b: RollbackBody, u=Depends(admin_user)):
+def rollback(b: RollbackBody, request: Request, u=Depends(admin_user)):
+    audit.event("update.rollback_requested", "warning", actor=u["username"], ip=security.client_ip(request), restore_backup=b.restore_backup)
     return _call("rollback", {"restore_backup": b.restore_backup}, timeout=300)
 
 
 @router.put("/config")
-def set_config(b: ConfigBody, u=Depends(admin_user)):
+def set_config(b: ConfigBody, request: Request, u=Depends(admin_user)):
+    audit.event("update.config_changed", "notice", actor=u["username"], ip=security.client_ip(request), **b.model_dump(exclude_none=True))
     return _call("config", b.model_dump(exclude_none=True), timeout=10)
 
 
@@ -128,7 +131,7 @@ async def stream(request: Request, once: bool = False, u=Depends(admin_user)):
             try:
                 st = await asyncio.to_thread(call, "status", None, 8.0)
                 blob = json.dumps(st, sort_keys=True)
-                digest = hashlib.sha1(blob.encode()).hexdigest()
+                digest = hashlib.sha256(blob.encode()).hexdigest()
                 if digest != last:
                     last = digest
                     yield f"event: status\ndata: {blob}\n\n"
@@ -185,6 +188,13 @@ def notify_once(st: dict, now: float | None = None):
         for uid in _admin_ids():
             events.publish(uid, "notification", app="updates", title=title, body=body[:280], level=level)
         seen["job"] = job["id"]; changed = True
+        if job["state"] != "success":
+            audit.event("update.failed" if job["state"] != "rolled_back" else "update.rolled_back", "warning" if job["state"] == "rolled_back" else "critical",
+                        actor="updater", version=job.get("to"), reason=job.get("error") or "")
+    for tag, why in (st.get("rejected") or {}).items():
+        if f"rej:{tag}" not in seen:
+            audit.event("update.signature_invalid", "critical", actor="updater", release=tag, reason=why)
+            seen[f"rej:{tag}"] = True; changed = True
     if changed:
         try:
             _notified_path().write_text(json.dumps(seen))

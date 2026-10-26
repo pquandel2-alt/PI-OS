@@ -1,0 +1,56 @@
+[Unit]
+Description=PiOS firewall (nftables, default-deny inbound, self-reverting changes)
+Documentation=file:///opt/pios/current/README.md
+# Load the rules before the network comes up.
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+# root user (nftables needs it) but primary group pios, so the control socket is root:pios 0660 without CAP_CHOWN
+User=root
+Group=pios
+Environment=PYTHONPATH=/usr/lib/pios-firewall PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m pios_firewall.server
+Restart=always
+RestartSec=2
+RuntimeDirectory=pios-firewall
+RuntimeDirectoryMode=0755
+StateDirectory=pios-firewall
+StateDirectoryMode=0700
+UMask=0077
+
+# Least privilege: this unit may do exactly one privileged thing - talk to netfilter.
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallFilter=@network-io
+InaccessiblePaths=-/home -/root -/var/lib/pios -/var/lib/pios-updater
+
+[Install]
+WantedBy=sysinit.target

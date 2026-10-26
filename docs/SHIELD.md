@@ -114,8 +114,7 @@ Until then: use PiOS only on a trusted LAN, VPN for remote access, never port-fo
 
 ## Resource usage
 
-Backend 55 MB RSS and ~0.5 % of one core while idle (x86 dev machine); firewall/sysops daemons are small Python processes (< 25 MB each, idle); clamd ≈ 1 GB only while scanning; nftables has no userspace cost;
-Shield adds ≈ 0.6 MB source. Boot: three extra small services start in parallel; nothing scans at boot. Numbers for the Pi 5 itself are **not measured yet**.
+Backend 55 MB RSS and ~0.5 % of one core while idle (x86 dev machine); the firewall, sysops and updater daemons are small stdlib Python processes (≈ 10–30 MB RSS each, x86, idle); clamd ≈ 1 GB only while scanning; nftables has no userspace cost. Boot: three extra small services start in parallel; nothing scans at boot. Numbers for the Pi 5 itself are **not measured yet**.
 
 ## What must still be tested on a real Raspberry Pi 5
 
